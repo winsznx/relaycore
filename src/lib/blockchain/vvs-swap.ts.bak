@@ -1,0 +1,285 @@
+/**
+ * VVS Finance Swap SDK Integration
+ * 
+ * Integration with VVS Finance for optimal trade routing on Cronos.
+ * Documentation: https://docs.vvs.finance/developer-resource/sdks/swap-sdk
+ * GitHub: https://github.com/vvs-finance/swap-sdk
+ * 
+ * NOTE: Requires installing @vvs-finance/swap-sdk and a quote API client ID
+ * Request client ID via VVS Discord: https://discord.com/invite/V2957zMsmg
+ */
+
+import { ethers } from 'ethers';
+
+// ============================================
+// VVS CONSTANTS
+// ============================================
+
+export const VVS_CHAIN_IDS = {
+    mainnet: 25,
+    testnet: 338
+} as const;
+
+// Pool types for VVS
+export const VVSPoolType = {
+    V2: 'V2',
+    V3_100: 'V3_100',   // 0.01% fee
+    V3_500: 'V3_500',   // 0.05% fee
+    V3_3000: 'V3_3000', // 0.3% fee
+    V3_10000: 'V3_10000' // 1% fee
+} as const;
+
+export type VVSPoolType = typeof VVSPoolType[keyof typeof VVSPoolType];
+
+// Common token addresses on Cronos
+export const VVS_TOKENS = {
+    mainnet: {
+        NATIVE: 'NATIVE', // CRO
+        WCRO: '0x5C7F8A570d578ED84E63fdFA7b1eE72dEae1AE23',
+        VVS: '0x2D03bECE6747ADC00E1a131BBA1469C15fD11e03',
+        USDC: '0xc21223249CA28397B4B6541dfFaEcC539BfF0c59',
+        USDT: '0x66e428c3f67a68878562e79A0234c1F83c208770',
+        WETH: '0xe44Fd7fCb2b1581822D0c862B68222998a0c299a',
+        WBTC: '0x062E66477Faf219F25D27dCED647BF57C3107d52',
+        DAI: '0xF2001B145b43032AAF5Ee2884e456CCd805F677D'
+    },
+    testnet: {
+        NATIVE: 'NATIVE', // TCRO
+        WCRO: '0x6a3173618859C7cd40fAF6921b5E9eB6A76f1fD4',
+        VVS: '0x904Bd5a5AAC0B9d88A0D47864724218986Ad4a3a',
+        USDC: '0xc01efAaF7C5C61bEbFAeb358E1161b537b8bC0e0' // devUSDC.e
+    }
+} as const;
+
+// ============================================
+// TYPES
+// ============================================
+
+export interface VVSTrade {
+    inputAmount: string;
+    outputAmount: string;
+    inputToken: string;
+    outputToken: string;
+    priceImpact: number;
+    route: string[];
+    poolTypes: VVSPoolType[];
+    executionPrice: number;
+    minimumOutput: string;
+    maximumInput?: string;
+}
+
+export interface VVSTradeOptions {
+    poolTypes?: VVSPoolType[];
+    maxHops?: number;
+    maxSplits?: number;
+    slippageTolerance?: number; // In percentage (e.g., 0.5 for 0.5%)
+}
+
+// ============================================
+// VVS SERVICE CLASS
+// ============================================
+
+/**
+ * VVS Swap Service
+ * 
+ * IMPORTANT: For full functionality, install @vvs-finance/swap-sdk:
+ * npm install @vvs-finance/swap-sdk
+ * 
+ * And set your quote API client ID:
+ * - Environment: SWAP_SDK_QUOTE_API_CLIENT_ID_25 (mainnet) or SWAP_SDK_QUOTE_API_CLIENT_ID_338 (testnet)
+ * - Or pass directly to fetchBestTrade options
+ */
+export class VVSSwapService {
+    private chainId: number;
+    private network: 'mainnet' | 'testnet';
+    private quoteApiClientId?: string;
+
+    constructor(
+        network: 'mainnet' | 'testnet' = 'testnet',
+        quoteApiClientId?: string
+    ) {
+        this.network = network;
+        this.chainId = VVS_CHAIN_IDS[network];
+        this.quoteApiClientId = quoteApiClientId || import.meta.env[`VITE_VVS_API_CLIENT_ID_${this.chainId}`];
+    }
+
+    /**
+     * Get token address by symbol
+     */
+    getTokenAddress(symbol: string): string | undefined {
+        const tokens = VVS_TOKENS[this.network];
+        return tokens[symbol as keyof typeof tokens];
+    }
+
+    /**
+     * Fetch best trade route using VVS SDK
+     * 
+     * This is a wrapper that will dynamically import the VVS SDK
+     * to avoid build issues if SDK is not installed
+     */
+    async fetchBestTrade(
+        inputToken: string,
+        outputToken: string,
+        amount: string,
+        options: VVSTradeOptions = {}
+    ): Promise<VVSTrade | null> {
+        const defaultOptions: Required<VVSTradeOptions> = {
+            poolTypes: [
+                VVSPoolType.V2,
+                VVSPoolType.V3_100,
+                VVSPoolType.V3_500,
+                VVSPoolType.V3_3000,
+                VVSPoolType.V3_10000
+            ],
+            maxHops: 3,
+            maxSplits: 2,
+            slippageTolerance: 0.5
+        };
+
+        const opts = { ...defaultOptions, ...options };
+
+        try {
+            // Dynamic import to avoid build-time dependency
+            const vvsSdk = await import('@vvs-finance/swap-sdk');
+
+            const trade = await vvsSdk.fetchBestTrade(
+                this.chainId,
+                inputToken,
+                outputToken,
+                amount,
+                {
+                    poolTypes: opts.poolTypes,
+                    maxHops: opts.maxHops,
+                    maxSplits: opts.maxSplits,
+                    quoteApiClientId: this.quoteApiClientId
+                }
+            );
+
+            if (!trade) {
+                return null;
+            }
+
+            return {
+                inputAmount: trade.inputAmount.toString(),
+                outputAmount: trade.outputAmount.toString(),
+                inputToken,
+                outputToken,
+                priceImpact: trade.priceImpact || 0,
+                route: trade.route?.map((r: any) => r.address) || [],
+                poolTypes: trade.poolTypes || opts.poolTypes,
+                executionPrice: trade.executionPrice || 0,
+                minimumOutput: trade.minimumAmountOut?.toString() || trade.outputAmount.toString()
+            };
+        } catch (error: any) {
+            // If SDK not installed, provide a helpful error
+            if (error.code === 'ERR_MODULE_NOT_FOUND') {
+                console.warn(
+                    'VVS Swap SDK not installed. Run: npm install @vvs-finance/swap-sdk\n' +
+                    'And set VITE_VVS_API_CLIENT_ID_338 (testnet) or VITE_VVS_API_CLIENT_ID_25 (mainnet)'
+                );
+            } else {
+                console.error('VVS fetchBestTrade error:', error);
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Execute a trade using ethers signer
+     */
+    async executeTrade(
+        trade: VVSTrade,
+        signer: ethers.Signer
+    ): Promise<{ txHash: string }> {
+        try {
+            // Dynamic import
+            const vvsSdk = await import('@vvs-finance/swap-sdk');
+
+            // First check if approval is needed
+            const approvalTx = await vvsSdk.approveIfNeeded(this.chainId, trade, signer);
+            if (approvalTx) {
+                console.log('Approval required, waiting for confirmation...');
+                await approvalTx.wait();
+                console.log('Approval confirmed');
+            }
+
+            // Execute the trade
+            const tx = await vvsSdk.executeTrade(this.chainId, trade, signer);
+            console.log('Trade executed:', tx.hash);
+
+            return { txHash: tx.hash };
+        } catch (error: any) {
+            if (error.code === 'ERR_MODULE_NOT_FOUND') {
+                throw new Error('VVS Swap SDK not installed');
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Prepare trade transaction for manual execution
+     * Use this if you want to execute via your own web3 interface
+     */
+    async prepareTradeTx(
+        trade: VVSTrade,
+        recipient: string
+    ): Promise<{
+        to: string;
+        data: string;
+        value: string;
+    } | null> {
+        try {
+            const vvsSdk = await import('@vvs-finance/swap-sdk');
+
+            const txRequest = vvsSdk.prepareTradeTxRequest(
+                this.chainId,
+                trade,
+                recipient
+            );
+
+            return {
+                to: txRequest.to,
+                data: txRequest.data,
+                value: txRequest.value?.toString() || '0'
+            };
+        } catch (error: any) {
+            if (error.code === 'ERR_MODULE_NOT_FOUND') {
+                console.warn('VVS Swap SDK not installed');
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Get quote without SDK (using VVS API directly)
+     * Fallback method if SDK is not installed
+     */
+    async getQuoteFallback(
+        _inputToken: string,
+        _outputToken: string,
+        _amountIn: string
+    ): Promise<{ amountOut: string; priceImpact: number } | null> {
+        // VVS doesn't have a public quote API without SDK
+        // This is a placeholder for potential direct API integration
+        console.warn('VVS quote API requires SDK with client ID');
+        return null;
+    }
+}
+
+// ============================================
+// FACTORY FUNCTIONS
+// ============================================
+
+/**
+ * Create a VVS swap service for the current network
+ */
+export function createVVSService(network?: 'mainnet' | 'testnet'): VVSSwapService {
+    const net = network || (import.meta.env.VITE_CRONOS_NETWORK as 'mainnet' | 'testnet') || 'testnet';
+    return new VVSSwapService(net);
+}
+
+// ============================================
+// EXPORTS
+// ============================================
+
+export const vvsService = createVVSService();
