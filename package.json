@@ -77,7 +77,9 @@
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
     "telegraf": "^4.16.3",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "viem": "^2.44.4",
+    "wagmi": "^3.3.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
