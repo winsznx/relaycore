@@ -1,0 +1,40 @@
+{
+    "name": "relaycore-mcp",
+    "version": "1.0.0",
+    "description": "Relay Core MCP Server - Unified protocol surface for agents, services, x402 payments, and Cronos ecosystem",
+    "main": "dist/index.js",
+    "type": "module",
+    "scripts": {
+        "build": "tsc",
+        "start": "node dist/index.js",
+        "dev": "npx tsx index.ts",
+        "dev:http": "MCP_HTTP_MODE=true npx tsx index.ts",
+        "start:http": "MCP_HTTP_MODE=true node dist/index.js"
+    },
+    "keywords": [
+        "mcp",
+        "relay-core",
+        "cronos",
+        "x402",
+        "crypto-com",
+        "agents"
+    ],
+    "author": "Relay Core",
+    "license": "MIT",
+    "dependencies": {
+        "@crypto.com/facilitator-client": "^1.0.4",
+        "@modelcontextprotocol/sdk": "^1.0.0",
+        "cors": "^2.8.5",
+        "dotenv": "^16.3.0",
+        "ethers": "^6.15.0",
+        "express": "^5.0.0",
+        "zod": "^3.22.0"
+    },
+    "devDependencies": {
+        "@types/cors": "^2.8.17",
+        "@types/express": "^5.0.0",
+        "@types/node": "^20.0.0",
+        "tsx": "^4.0.0",
+        "typescript": "^5.0.0"
+    }
+}
