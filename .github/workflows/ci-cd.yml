@@ -7,30 +7,23 @@ on:
     branches: [main, develop]
 
 env:
-  NODE_VERSION: '18'
-  PNPM_VERSION: '8'
+  NODE_VERSION: '20'
 
 jobs:
-  # Build
   build:
     name: Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: ${{ env.PNPM_VERSION }}
-      
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          cache: 'npm'
       
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
       
       - name: Build frontend
         run: npx vite build
@@ -42,33 +35,14 @@ jobs:
           path: dist/
           retention-days: 1
 
-  # Test (placeholder for future tests)
   test:
     name: Test
     runs-on: ubuntu-latest
     needs: build
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: ${{ env.PNPM_VERSION }}
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-      
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      
-      # TODO: Add tests
-      # - name: Run tests
-      #   run: pnpm test
+      - run: echo "Tests placeholder - add tests here"
 
-  # Deploy to Staging
   deploy-staging:
     name: Deploy to Staging
     runs-on: ubuntu-latest
@@ -80,11 +54,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts
-      
       - name: Deploy to Vercel (Staging)
         uses: amondnet/vercel-action@v25
         with:
@@ -94,7 +63,6 @@ jobs:
           working-directory: ./
           scope: ${{ secrets.VERCEL_ORG_ID }}
 
-  # Deploy to Production
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
@@ -106,11 +74,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts
-      
       - name: Deploy to Vercel (Production)
         uses: amondnet/vercel-action@v25
         with:
@@ -120,37 +83,3 @@ jobs:
           vercel-args: '--prod'
           working-directory: ./
           scope: ${{ secrets.VERCEL_ORG_ID }}
-      
-      - name: Notify deployment
-        run: |
-          echo "Deployed to production: https://relaycore.xyz"
-
-  # Database Migrations
-  migrate:
-    name: Run Database Migrations
-    runs-on: ubuntu-latest
-    needs: [build, test]
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: ${{ env.PNPM_VERSION }}
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-      
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      
-      - name: Run migrations
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: |
-          pnpm supabase db push --linked
