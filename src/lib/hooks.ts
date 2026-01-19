@@ -350,7 +350,7 @@ export function useExecuteTrade() {
 export function useVenues() {
     const queryFn = useCallback(async () => {
         return apiClient.query('dex_venues', {
-            select: '*, reputations(*)',
+            select: '*',
             filter: { is_active: true },
             cache: true,
             cacheTTL: 60000,
@@ -367,7 +367,7 @@ export function useVenues() {
 export function useRecentTrades(limit = 10) {
     const queryFn = useCallback(async () => {
         return apiClient.query('trades', {
-            select: '*, dex_venues(name)',
+            select: '*',
             order: { column: 'created_at', ascending: false },
             limit,
             cache: true,
@@ -386,7 +386,7 @@ export function useServices(category?: string) {
     const queryFn = useCallback(async () => {
         const filter = category ? { category, is_active: true } : { is_active: true };
         return apiClient.query('services', {
-            select: '*, reputations(*)',
+            select: '*',
             filter,
             order: { column: 'created_at', ascending: false },
             cache: true,
@@ -405,7 +405,7 @@ export function useUserServices(userAddress: string | null) {
             return { data: [], error: null, requestId: '', cached: false, latency: 0 };
         }
         return apiClient.query('services', {
-            select: '*, reputations(*)',
+            select: '*',
             filter: { owner_address: userAddress },
             order: { column: 'created_at', ascending: false },
             cache: true,
@@ -434,6 +434,24 @@ export function useUserTrades(userAddress: string | null) {
     return useQuery(`user-trades:${userAddress}`, queryFn, {
         enabled: !!userAddress,
         staleTime: 30000,
+    });
+}
+
+export function useUserPayments(userAddress: string | null) {
+    const queryFn = useCallback(async () => {
+        if (!userAddress) {
+            return { data: [], error: null, requestId: '', cached: false, latency: 0 };
+        }
+        return apiClient.query('payments', {
+            filter: { from_address: userAddress.toLowerCase() },
+            order: { column: 'created_at', ascending: false },
+            cache: true,
+        });
+    }, [userAddress]);
+
+    return useQuery(`user-payments:${userAddress}`, queryFn, {
+        enabled: !!userAddress,
+        staleTime: 15000,
     });
 }
 
@@ -710,7 +728,7 @@ export function useUserPositions(userAddress: string | null) {
             return { data: [], error: null, requestId: '', cached: false, latency: 0 };
         }
         return apiClient.query('trades', {
-            select: '*, dex_venues(name)',
+            select: '*',
             filter: { user_address: userAddress.toLowerCase(), status: 'open' },
             order: { column: 'created_at', ascending: false },
             cache: true,

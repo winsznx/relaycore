@@ -77,6 +77,7 @@ export function useX402Payment() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'x-user-address': address, // Send user address for storage
                 },
                 body: JSON.stringify({
                     paymentId,
