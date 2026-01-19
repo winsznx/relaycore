@@ -96,30 +96,28 @@ export class CryptoComAIService {
      * Get real-time price feed for a trading pair
      */
     async getPriceFeed(pair: string): Promise<PriceFeed> {
-        try {
-            const formattedPair = this.formatPair(pair);
-            const data = await this.request<any>('/public/get-ticker', {
-                instrument_name: formattedPair
-            });
+        const formattedPair = this.formatPair(pair);
+        const data = await this.request<any>('/public/get-ticker', {
+            instrument_name: formattedPair
+        });
 
-            const ticker = data?.data || data;
+        const ticker = data?.data || data;
 
-            return {
-                pair,
-                price: parseFloat(ticker.a || ticker.last || '0'),
-                bid: parseFloat(ticker.b || '0'),
-                ask: parseFloat(ticker.k || '0'),
-                volume24h: parseFloat(ticker.v || '0'),
-                change24h: parseFloat(ticker.c || '0'),
-                high24h: parseFloat(ticker.h || '0'),
-                low24h: parseFloat(ticker.l || '0'),
-                timestamp: new Date(ticker.t || Date.now())
-            };
-        } catch (error) {
-            console.warn(`Failed to get price for ${pair}, using fallback:`, error);
-            // Return estimated price if API fails
-            return this.getFallbackPrice(pair);
+        if (!ticker || (!ticker.a && !ticker.last)) {
+            throw new Error(`No price data available for ${pair}`);
         }
+
+        return {
+            pair,
+            price: parseFloat(ticker.a || ticker.last || '0'),
+            bid: parseFloat(ticker.b || '0'),
+            ask: parseFloat(ticker.k || '0'),
+            volume24h: parseFloat(ticker.v || '0'),
+            change24h: parseFloat(ticker.c || '0'),
+            high24h: parseFloat(ticker.h || '0'),
+            low24h: parseFloat(ticker.l || '0'),
+            timestamp: new Date(ticker.t || Date.now())
+        };
     }
 
     /**
@@ -242,36 +240,6 @@ export class CryptoComAIService {
             console.warn(`Slippage estimation failed for ${pair}:`, error);
             return 0.3; // Default 0.3%
         }
-    }
-
-    /**
-     * Fallback prices when API is unavailable
-     * Uses reasonable market estimates
-     */
-    private getFallbackPrice(pair: string): PriceFeed {
-        const fallbackPrices: Record<string, number> = {
-            'BTC-USD': 97000,
-            'ETH-USD': 3400,
-            'CRO-USD': 0.125,
-            'SOL-USD': 180,
-            'LINK-USD': 23,
-            'ARB-USD': 1.20,
-            'AVAX-USD': 40
-        };
-
-        const price = fallbackPrices[pair] || 100;
-
-        return {
-            pair,
-            price,
-            bid: price * 0.999,
-            ask: price * 1.001,
-            volume24h: 1000000000,
-            change24h: 0,
-            high24h: price * 1.02,
-            low24h: price * 0.98,
-            timestamp: new Date()
-        };
     }
 }
 
