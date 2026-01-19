@@ -1,7 +1,7 @@
 /**
- * ACPS Sessions Page
+ * x402 Sessions Page
  * 
- * View and manage Agent-Controlled Payment Sessions
+ * View and manage gasless payment sessions
  */
 
 import { useState, useEffect } from 'react';
@@ -25,11 +25,13 @@ interface Session {
     owner_address: string;
     max_spend: string;
     deposited: string;
-    released: string;
+    spent: string;
+    payment_count: number;
     status: string;
     expires_at: string;
     created_at: string;
     authorized_agents: string[];
+    deposit_tx_hash?: string;
 }
 
 interface Payment {
@@ -66,7 +68,7 @@ export default function ACPSSessions() {
 
     async function loadPayments(sessionId: number) {
         const { data } = await supabase
-            .from('escrow_payments')
+            .from('session_payments')
             .select('*')
             .eq('session_id', sessionId)
             .order('created_at', { ascending: false });
@@ -95,10 +97,10 @@ export default function ACPSSessions() {
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
                             <Shield className="w-8 h-8 text-orange-500" />
-                            ACPS Sessions
+                            x402 Sessions
                         </h1>
                         <p className="text-gray-600 mt-1">
-                            Agent-Controlled Payment Sessions with escrow-backed execution
+                            Gasless payment sessions powered by x402 protocol
                         </p>
                     </div>
                     <button
@@ -123,15 +125,15 @@ export default function ACPSSessions() {
                         </div>
                     </div>
                     <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
-                        <div className="text-sm text-gray-500">Total Deposited</div>
+                        <div className="text-sm text-gray-500">Total Budget</div>
                         <div className="text-2xl font-bold text-blue-600">
-                            ${sessions.reduce((sum, s) => sum + parseFloat(s.deposited || '0'), 0).toFixed(2)}
+                            ${sessions.reduce((sum, s) => sum + parseFloat(s.max_spend || '0'), 0).toFixed(2)}
                         </div>
                     </div>
                     <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
-                        <div className="text-sm text-gray-500">Total Released</div>
+                        <div className="text-sm text-gray-500">Total Spent</div>
                         <div className="text-2xl font-bold text-orange-600">
-                            ${sessions.reduce((sum, s) => sum + parseFloat(s.released || '0'), 0).toFixed(2)}
+                            ${sessions.reduce((sum, s) => sum + parseFloat(s.spent || '0'), 0).toFixed(2)}
                         </div>
                     </div>
                 </div>
@@ -140,18 +142,13 @@ export default function ACPSSessions() {
                 <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-xl p-4 mb-8 text-white">
                     <div className="flex items-center justify-between">
                         <div>
-                            <div className="text-sm opacity-80">EscrowSession Contract</div>
-                            <code className="text-lg font-mono">0x9D340a67ddD4Fcf5eC590b7B67e1fE8d020F7D61</code>
+                            <div className="text-sm opacity-80">x402 Gasless Sessions</div>
+                            <div className="text-lg">All payments gasless • No gas fees • Complete audit trail</div>
                         </div>
-                        <a
-                            href="https://testnet.cronoscan.com/address/0x9D340a67ddD4Fcf5eC590b7B67e1fE8d020F7D61"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition"
-                        >
-                            <ExternalLink className="w-4 h-4" />
-                            View on Explorer
-                        </a>
+                        <div className="flex items-center gap-2 bg-white/20 px-4 py-2 rounded-lg">
+                            <Zap className="w-4 h-4" />
+                            Powered by x402
+                        </div>
                     </div>
                 </div>
 
@@ -194,10 +191,13 @@ export default function ACPSSessions() {
                                         </div>
                                         <div className="flex items-center gap-4 text-sm">
                                             <span className="text-blue-600">
-                                                Deposited: ${parseFloat(session.deposited || '0').toFixed(2)}
+                                                Budget: ${parseFloat(session.max_spend || '0').toFixed(2)}
                                             </span>
                                             <span className="text-orange-600">
-                                                Released: ${parseFloat(session.released || '0').toFixed(2)}
+                                                Spent: ${parseFloat(session.spent || '0').toFixed(2)}
+                                            </span>
+                                            <span className="text-green-600">
+                                                Remaining: ${(parseFloat(session.max_spend || '0') - parseFloat(session.spent || '0')).toFixed(2)}
                                             </span>
                                         </div>
                                     </motion.div>
@@ -218,13 +218,25 @@ export default function ACPSSessions() {
                                 {/* Session Info */}
                                 <div className="grid grid-cols-2 gap-4 mb-6">
                                     <div>
-                                        <div className="text-xs text-gray-500 mb-1">Max Spend</div>
+                                        <div className="text-xs text-gray-500 mb-1">Budget</div>
                                         <div className="font-semibold">${parseFloat(selectedSession.max_spend).toFixed(2)}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-xs text-gray-500 mb-1">Spent</div>
+                                        <div className="font-semibold text-orange-600">
+                                            ${parseFloat(selectedSession.spent || '0').toFixed(2)}
+                                        </div>
                                     </div>
                                     <div>
                                         <div className="text-xs text-gray-500 mb-1">Remaining</div>
                                         <div className="font-semibold text-green-600">
-                                            ${(parseFloat(selectedSession.deposited || '0') - parseFloat(selectedSession.released || '0')).toFixed(2)}
+                                            ${(parseFloat(selectedSession.max_spend || '0') - parseFloat(selectedSession.spent || '0')).toFixed(2)}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="text-xs text-gray-500 mb-1">Payments</div>
+                                        <div className="font-semibold text-blue-600">
+                                            {selectedSession.payment_count || 0}
                                         </div>
                                     </div>
                                     <div>
@@ -300,35 +312,35 @@ export default function ACPSSessions() {
 
                 {/* How it Works */}
                 <div className="mt-12 bg-white rounded-xl border border-gray-200 p-6">
-                    <h2 className="text-xl font-bold text-gray-900 mb-4">How ACPS Works</h2>
+                    <h2 className="text-xl font-bold text-gray-900 mb-4">How x402 Sessions Work</h2>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                         <div className="text-center">
                             <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3">
                                 <Plus className="w-6 h-6 text-orange-600" />
                             </div>
                             <h3 className="font-semibold mb-1">1. Create Session</h3>
-                            <p className="text-sm text-gray-500">Agent requests session, gets 402 Payment Required</p>
+                            <p className="text-sm text-gray-500">Create session with budget and duration</p>
                         </div>
                         <div className="text-center">
                             <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
                                 <Wallet className="w-6 h-6 text-blue-600" />
                             </div>
-                            <h3 className="font-semibold mb-1">2. Deposit USDC</h3>
-                            <p className="text-sm text-gray-500">User deposits funds into escrow contract</p>
+                            <h3 className="font-semibold mb-1">2. Pay via x402</h3>
+                            <p className="text-sm text-gray-500">Pay Relay once (gasless) to activate session</p>
                         </div>
                         <div className="text-center">
                             <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
                                 <Zap className="w-6 h-6 text-green-600" />
                             </div>
-                            <h3 className="font-semibold mb-1">3. Agents Execute</h3>
-                            <p className="text-sm text-gray-500">Authorized agents execute autonomously</p>
+                            <h3 className="font-semibold mb-1">3. Hire Agents</h3>
+                            <p className="text-sm text-gray-500">Relay pays agents from session (gasless)</p>
                         </div>
                         <div className="text-center">
                             <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
                                 <CheckCircle2 className="w-6 h-6 text-purple-600" />
                             </div>
-                            <h3 className="font-semibold mb-1">4. Auto-Settlement</h3>
-                            <p className="text-sm text-gray-500">Payments released on success, refunds on failure</p>
+                            <h3 className="font-semibold mb-1">4. Auto-Refund</h3>
+                            <p className="text-sm text-gray-500">Remaining balance refunded via x402 (gasless)</p>
                         </div>
                     </div>
                 </div>

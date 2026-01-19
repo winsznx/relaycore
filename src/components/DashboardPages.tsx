@@ -26,7 +26,7 @@ import {
     EmptyState, AsyncBoundary, toast
 } from '@/components/ui/states';
 import {
-    useUserTrades, useServices, useDashboardStats,
+    useUserTrades, useUserPayments, useServices, useDashboardStats,
     useExecuteTrade, useUserServices,
     useUserPositions, useVenues
 } from '@/lib/hooks';
@@ -860,7 +860,58 @@ export function DashboardAgents() {
 
 export function DashboardTransactions() {
     const { address, isConnected } = useAppKitAccount();
-    const { data: trades, isLoading, error, refetch } = useUserTrades(address || null);
+    const { data: trades, isLoading: tradesLoading, error: tradesError, refetch: refetchTrades } = useUserTrades(address || null);
+    const { data: payments, isLoading: paymentsLoading, error: paymentsError, refetch: refetchPayments } = useUserPayments(address || null);
+
+    // Combine and sort transactions
+    const allTransactions = useMemo(() => {
+        const tradesList = trades || [];
+        const paymentsList = payments || [];
+
+        // Transform payments to have a consistent structure
+        const transformedPayments = paymentsList.map((p: any) => ({
+            id: p.id,
+            type: 'payment',
+            payment_id: p.payment_id,
+            tx_hash: p.tx_hash,
+            from_address: p.from_address,
+            to_address: p.to_address,
+            amount: p.amount,
+            token_address: p.token_address,
+            resource_url: p.resource_url,
+            status: p.status,
+            timestamp: p.timestamp || p.created_at,
+            created_at: p.created_at,
+        }));
+
+        // Transform trades to have a consistent structure
+        const transformedTrades = tradesList.map((t: any) => ({
+            id: t.id,
+            type: 'trade',
+            pair: t.pair,
+            side: t.side,
+            leverage: t.leverage,
+            size_usd: t.size_usd,
+            entry_price: t.entry_price,
+            status: t.status,
+            tx_hash: t.tx_hash_open || t.tx_hash_close,
+            timestamp: t.created_at,
+            created_at: t.created_at,
+        }));
+
+        // Combine and sort by timestamp (newest first)
+        return [...transformedPayments, ...transformedTrades].sort((a, b) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+    }, [trades, payments]);
+
+    const isLoading = tradesLoading || paymentsLoading;
+    const error = tradesError || paymentsError;
+
+    const refetch = () => {
+        refetchTrades();
+        refetchPayments();
+    };
 
     // Show connect wallet prompt if not connected
     if (!isConnected || !address) {
@@ -892,20 +943,20 @@ export function DashboardTransactions() {
                     isLoading={isLoading}
                     isError={!!error}
                     error={error}
-                    data={trades}
+                    data={allTransactions}
                     loadingFallback={<SkeletonTable rows={8} cols={4} />}
                     emptyFallback={
                         <EmptyState
                             title="No transactions yet"
-                            description="Your transactions will appear here once you start trading."
+                            description="Your transactions will appear here once you start trading or making payments."
                         />
                     }
                     onRetry={refetch}
                 >
-                    {(tradeList) => (
+                    {(txList) => (
                         <div className="divide-y divide-gray-50">
-                            {tradeList.map((trade: any) => (
-                                <TransactionRow key={trade.id} trade={trade} />
+                            {txList.map((tx: any) => (
+                                <TransactionRow key={tx.id} trade={tx} />
                             ))}
                         </div>
                     )}
@@ -1813,8 +1864,39 @@ function TransactionRow({ trade }: { trade: any }) {
     const isPayment = trade.type === 'payment';
     const isSuccess = trade.status === 'closed' || trade.status === 'open' || trade.status === 'settled' || trade.status === 'success';
 
+    // Format payment amount (USDC has 6 decimals)
+    const formattedAmount = isPayment
+        ? (parseFloat(trade.amount) / 1e6).toFixed(2)
+        : trade.size_usd;
+
+    // Get transaction hash
+    const txHash = trade.tx_hash || trade.tx_hash_open || trade.tx_hash_close;
+
+    // Cronos testnet explorer URL
+    const explorerUrl = txHash
+        ? `https://explorer.cronos.org/testnet/tx/${txHash}`
+        : null;
+
+    const handleClick = () => {
+        if (explorerUrl) {
+            window.open(explorerUrl, '_blank', 'noopener,noreferrer');
+        }
+    };
+
     return (
-        <div className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+        <div
+            className={`px-6 py-4 flex items-center justify-between transition-colors ${explorerUrl ? 'hover:bg-gray-50 cursor-pointer' : ''
+                }`}
+            onClick={handleClick}
+            role={explorerUrl ? 'button' : undefined}
+            tabIndex={explorerUrl ? 0 : undefined}
+            onKeyDown={(e) => {
+                if (explorerUrl && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    handleClick();
+                }
+            }}
+        >
             <div className="flex items-center gap-4">
                 <div className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center ${isSuccess ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-600'
                     }`}>
@@ -1825,20 +1907,23 @@ function TransactionRow({ trade }: { trade: any }) {
                         {isPayment ? (
                             <span className="flex items-center gap-2">
                                 <DollarSign className="h-4 w-4" />
-                                {trade.purpose || 'Payment'}
+                                {trade.resource_url?.includes('perpai') ? 'PerpAI Quote' : 'Payment'}
                             </span>
                         ) : (
                             `${trade.side.toUpperCase()} ${trade.pair}`
                         )}
                     </p>
-                    <p className="text-xs text-gray-500">
-                        {trade.tx_hash?.slice(0, 10) || trade.tx_hash_open?.slice(0, 10)}... • {new Date(trade.created_at).toLocaleString()}
+                    <p className="text-xs text-gray-500 flex items-center gap-1">
+                        {txHash?.slice(0, 10)}...
+                        {explorerUrl && <ArrowUpRight className="h-3 w-3" />}
+                        <span className="mx-1">•</span>
+                        {new Date(trade.created_at).toLocaleString()}
                     </p>
                 </div>
             </div>
             <div className="text-right">
                 <p className="font-mono font-bold text-gray-900 dark:text-gray-100">
-                    {isPayment ? `${trade.amount} USDC` : `$${trade.size_usd}`}
+                    {isPayment ? `${formattedAmount} USDC` : `$${trade.size_usd}`}
                 </p>
                 <p className="text-xs text-gray-400">
                     {isPayment ? trade.to_address?.slice(0, 10) + '...' : (trade.dex_venues?.name || 'Unknown venue')}

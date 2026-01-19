@@ -51,12 +51,26 @@ interface MetricsPoint {
     value: number;
 }
 
+interface PaymentRecord {
+    paymentId: string;
+    txHash: string;
+    from: string;
+    to: string;
+    amount: string;
+    tokenAddress: string;
+    resourceUrl: string;
+    status: string;
+    timestamp: string;
+}
+
 export function ServiceDetails({ serviceId, onBack, onCallService }: ServiceDetailsProps) {
     const [service, setService] = useState<ServiceDetail | null>(null);
     const [metrics, setMetrics] = useState<MetricsPoint[]>([]);
+    const [payments, setPayments] = useState<PaymentRecord[]>([]);
+    const [paymentsLoading, setPaymentsLoading] = useState(false);
     const [loading, setLoading] = useState(true);
     const [copied, setCopied] = useState(false);
-    const [activeTab, setActiveTab] = useState<'overview' | 'schema' | 'graph'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'schema' | 'graph' | 'transactions'>('overview');
 
     useEffect(() => {
         fetchServiceDetails();
@@ -85,6 +99,27 @@ export function ServiceDetails({ serviceId, onBack, onCallService }: ServiceDeta
             setLoading(false);
         }
     };
+
+    const fetchPayments = async () => {
+        setPaymentsLoading(true);
+        try {
+            const response = await fetch(`/api/services/${serviceId}/payments?limit=20`);
+            if (response.ok) {
+                const data = await response.json();
+                setPayments(data.payments || []);
+            }
+        } catch (error) {
+            console.error('Failed to fetch payments:', error);
+        } finally {
+            setPaymentsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'transactions') {
+            fetchPayments();
+        }
+    }, [activeTab, serviceId]);
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
@@ -233,7 +268,7 @@ export function ServiceDetails({ serviceId, onBack, onCallService }: ServiceDeta
 
             {/* Tabs */}
             <div className="flex gap-1 border-b border-gray-200">
-                {(['overview', 'schema', 'graph'] as const).map(tab => (
+                {(['overview', 'schema', 'graph', 'transactions'] as const).map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -427,6 +462,60 @@ export function ServiceDetails({ serviceId, onBack, onCallService }: ServiceDeta
                                 </div>
                             ) : (
                                 <p className="text-gray-400">No dependents</p>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            {activeTab === 'transactions' && (
+                <div className="space-y-4">
+                    <Card className="border-0 shadow-sm ring-1 ring-gray-100">
+                        <CardHeader>
+                            <CardTitle>Payment History</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            {paymentsLoading ? (
+                                <p className="text-gray-400 text-center py-8">Loading payments...</p>
+                            ) : payments.length > 0 ? (
+                                <div className="space-y-2">
+                                    {payments.map((payment) => (
+                                        <div
+                                            key={payment.paymentId}
+                                            className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                                        >
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <Badge variant={payment.status === 'completed' ? 'default' : 'outline'}>
+                                                        {payment.status}
+                                                    </Badge>
+                                                    <code className="text-xs text-gray-600">
+                                                        {payment.from.slice(0, 6)}...{payment.from.slice(-4)}
+                                                    </code>
+                                                </div>
+                                                <div className="text-sm text-gray-500">
+                                                    {new Date(payment.timestamp).toLocaleString()}
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="font-semibold text-gray-900">
+                                                    ${(parseFloat(payment.amount) / 1e6).toFixed(2)}
+                                                </div>
+                                                <a
+                                                    href={`https://explorer.cronos.org/testnet/tx/${payment.txHash}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs text-blue-600 hover:text-blue-500 flex items-center gap-1"
+                                                >
+                                                    View TX
+                                                    <ExternalLink className="w-3 h-3" />
+                                                </a>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-gray-400 text-center py-8">No payment history</p>
                             )}
                         </CardContent>
                     </Card>

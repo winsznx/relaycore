@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,7 @@ import {
 import { AsyncBoundary, SkeletonCard } from '@/components/ui/states';
 import { useServices } from '@/lib/hooks';
 import { useAccount } from 'wagmi';
+import { supabase } from '@/lib/supabase';
 
 /**
  * My Services Dashboard
@@ -55,49 +56,91 @@ export function ServiceDiscovery() {
     const { address, isConnected } = useAccount();
     const [activeTab, setActiveTab] = useState<ServiceTab>('owned');
     const [searchQuery, setSearchQuery] = useState('');
+    const [filteredServices, setFilteredServices] = useState<ServiceData[]>([]);
     const navigate = useNavigate();
 
     // Fetch all services
     const { data: allServices, isLoading, error } = useServices();
 
     // Filter services based on active tab
-    const filteredServices = useMemo(() => {
-        if (!allServices) return [];
-        const services = allServices as ServiceData[];
+    useEffect(() => {
+        const filterServices = async () => {
+            if (!allServices) {
+                setFilteredServices([]);
+                return;
+            }
+            const services = allServices as ServiceData[];
 
-        let result: ServiceData[] = [];
+            let result: ServiceData[] = [];
 
-        switch (activeTab) {
-            case 'owned':
-                // Services created by this user
-                result = services.filter(s =>
-                    s.ownerAddress?.toLowerCase() === address?.toLowerCase()
+            switch (activeTab) {
+                case 'owned':
+                    // Services created by this user
+                    result = services.filter(s =>
+                        s.ownerAddress?.toLowerCase() === address?.toLowerCase()
+                    );
+                    break;
+                case 'purchased':
+                    // Query payments table for services user has paid for
+                    if (address) {
+                        const { data: payments } = await supabase
+                            .from('payments')
+                            .select('to_address')
+                            .eq('from_address', address.toLowerCase())
+                            .eq('status', 'settled');
+
+                        const serviceOwners = new Set(payments?.map(p => p.to_address) || []);
+                        result = services.filter(s =>
+                            s.ownerAddress && serviceOwners.has(s.ownerAddress.toLowerCase())
+                        );
+                    } else {
+                        result = [];
+                    }
+                    break;
+                case 'used':
+                    // Query outcomes table for services this user has invoked
+                    if (address) {
+                        const { data: outcomes } = await supabase
+                            .from('outcomes')
+                            .select('payment_id')
+                            .limit(100);
+
+                        if (outcomes && outcomes.length > 0) {
+                            const paymentIds = outcomes.map(o => o.payment_id);
+                            const { data: payments } = await supabase
+                                .from('payments')
+                                .select('to_address')
+                                .eq('from_address', address.toLowerCase())
+                                .in('payment_id', paymentIds);
+
+                            const serviceOwners = new Set(payments?.map(p => p.to_address) || []);
+                            result = services.filter(s =>
+                                s.ownerAddress && serviceOwners.has(s.ownerAddress.toLowerCase())
+                            );
+                        } else {
+                            result = [];
+                        }
+                    } else {
+                        result = [];
+                    }
+                    break;
+            }
+
+            // Apply search filter
+            if (searchQuery) {
+                result = result.filter(s =>
+                    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    s.description?.toLowerCase().includes(searchQuery.toLowerCase())
                 );
-                break;
-            case 'purchased':
-                // TODO: Query subscriptions/purchases table for services user has paid for
-                // For now, show empty state - this will be populated when purchase tracking is implemented
-                result = [];
-                break;
-            case 'used':
-                // TODO: Query outcomes/payments table for services this user has invoked
-                // For now, show empty state - this will be populated when usage tracking is implemented
-                result = [];
-                break;
-        }
+            }
 
-        // Apply search filter
-        if (searchQuery) {
-            result = result.filter(s =>
-                s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                s.description?.toLowerCase().includes(searchQuery.toLowerCase())
-            );
-        }
+            setFilteredServices(result);
+        };
 
-        return result;
+        filterServices();
     }, [allServices, activeTab, searchQuery, address]);
 
-    // Calculate stats for header
+    // Calculate stats for header (non-async version)
     const stats = useMemo(() => {
         if (!allServices) return { owned: 0, purchased: 0, used: 0, totalEarnings: 0 };
         const services = allServices as ServiceData[];
@@ -105,18 +148,15 @@ export function ServiceDiscovery() {
         const owned = services.filter(s =>
             s.ownerAddress?.toLowerCase() === address?.toLowerCase()
         );
-        // TODO: Query from subscriptions/outcomes tables when implemented
-        const purchased = 0;
-        const used = 0;
 
-        const totalEarnings = owned.reduce((sum, s) =>
-            sum + (s.reputation?.totalPayments || 0) * parseFloat(s.pricePerCall || '0'), 0
-        );
+        const totalEarnings = owned.reduce((sum, s) => {
+            return sum + (s.reputation?.totalPayments || 0) * parseFloat(s.pricePerCall || '0');
+        }, 0);
 
         return {
             owned: owned.length,
-            purchased,
-            used,
+            purchased: 0, // Will be updated by async effect
+            used: 0, // Will be updated by async effect
             totalEarnings
         };
     }, [allServices, address]);

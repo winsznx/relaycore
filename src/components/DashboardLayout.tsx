@@ -1,10 +1,12 @@
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LayoutDashboard, Users, BarChart3, ShieldCheck, Settings, Bell, Wallet, Menu, TrendingUp, Store, Zap, LogOut, Building2 } from 'lucide-react'
+import { LayoutDashboard, Users, BarChart3, ShieldCheck, Settings, Bell, Wallet, Menu, TrendingUp, Store, LogOut, Building2, ChevronLeft, ChevronRight, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
-import logo from '@/assets/logo.png'
+import logoWhite from '@/assets/relay-white.svg'
+import logoIcon from '@/assets/logo-white.svg'
+import logoFavicon from '@/assets/relay-favicon.svg'
 import { useAppKit, useAppKitAccount } from '@/lib/web3'
 import { AIChat } from '@/components/AIChat'
 
@@ -32,11 +34,10 @@ export function DashboardLayout() {
     // Fetch balance using Web3 provider when connected
     useEffect(() => {
         if (isConnected && address && window.ethereum) {
-            window.ethereum.request({
+            (window.ethereum.request as (args: { method: string; params: string[] }) => Promise<string>)({
                 method: 'eth_getBalance',
                 params: [address, 'latest']
             }).then((balance: string) => {
-                // Convert from Wei to CRO
                 const balanceInCRO = parseInt(balance, 16) / 1e18
                 setBalanceDisplay(`${balanceInCRO.toFixed(4)} ${caipAddress?.includes('338') ? 'TCRO' : 'CRO'}`)
             }).catch((err: Error) => {
@@ -61,24 +62,30 @@ export function DashboardLayout() {
                     width: isSidebarCollapsed ? '80px' : '288px'
                 }}
                 transition={{ duration: 0.3, ease: 'easeInOut' }}
-                className="hidden md:flex bg-[#111111] text-white flex-col m-3 rounded-2xl overflow-hidden shadow-2xl shrink-0"
+                className="hidden md:flex bg-[#111111] text-white flex-col m-3 rounded-2xl overflow-visible shadow-2xl shrink-0 relative"
             >
                 <div className={cn(
-                    "p-6 flex items-center border-b border-gray-800",
-                    isSidebarCollapsed ? "justify-center" : "justify-between gap-3"
+                    "p-6 flex items-center justify-center border-b border-gray-800 relative"
                 )}>
-                    {!isSidebarCollapsed && (
-                        <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
-                            <img src={logo} alt="Relay Core" className="h-8 w-8 rounded-lg" />
-                            <span className="font-bold text-lg tracking-tight">Relay Core</span>
-                        </div>
-                    )}
+                    <div className="flex items-center cursor-pointer" onClick={() => navigate('/')}>
+                        {isSidebarCollapsed ? (
+                            <img src={logoIcon} alt="Relay" className="h-6 w-6" />
+                        ) : (
+                            <img src={logoWhite} alt="Relay Core" className="h-6" />
+                        )}
+                    </div>
+
+                    {/* Toggle Button - Positioned on the right edge */}
                     <button
                         onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                        className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                        className="absolute -right-3 top-1/2 -translate-y-1/2 p-1.5 bg-[#111111] border border-gray-700 hover:bg-gray-800 rounded-full transition-colors shadow-lg z-10"
                         aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
                     >
-                        <Menu size={18} className="text-gray-400" />
+                        {isSidebarCollapsed ? (
+                            <ChevronRight size={16} className="text-gray-400" />
+                        ) : (
+                            <ChevronLeft size={16} className="text-gray-400" />
+                        )}
                     </button>
                 </div>
 
@@ -120,7 +127,7 @@ export function DashboardLayout() {
                                         {isConnected && address ? 'Tim' : 'Guest User'}
                                     </p>
                                     <p className="text-xs text-gray-500 truncate">
-                                        {isConnected ? truncateAddress(address) : 'View Only'}
+                                        {isConnected && address ? truncateAddress(address) : 'View Only'}
                                     </p>
                                 </div>
                             )}
@@ -152,8 +159,7 @@ export function DashboardLayout() {
                 {/* Mobile Header */}
                 <header className="md:hidden bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 py-3 flex items-center justify-between shrink-0 z-30">
                     <div className="flex items-center gap-3">
-                        <img src={logo} alt="Relay Core" className="h-8 w-8 rounded-lg cursor-pointer" onClick={() => navigate('/')} />
-                        <span className="font-bold text-[#111111]">Dashboard</span>
+                        <img src={logoFavicon} alt="Relay" className="h-7 w-7 cursor-pointer" onClick={() => navigate('/')} />
                     </div>
                     <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
                         <Menu className="text-[#111111]" />

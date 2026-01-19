@@ -3,12 +3,13 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
     Search, CheckCircle2, XCircle, ExternalLink,
     TrendingUp, Zap, Shield,
     GitBranch, Code, Box, ArrowRight, Filter, ChevronDown,
     Layers, Database, Brain, BarChart3, Wallet, Globe,
-    Sparkles, Network
+    Sparkles, Network, Link2, CreditCard, Plus, Loader2
 } from 'lucide-react';
 
 /**
@@ -54,6 +55,24 @@ interface ServiceData {
     };
     dependencyCount?: number;
     totalCalls?: number;
+    // Agent card data (Phase 6)
+    agentCard?: {
+        name: string;
+        description?: string;
+        url: string;
+        version?: string;
+        network?: string;
+        capabilities?: string[];
+        resources?: Array<{
+            id: string;
+            title: string;
+            description?: string;
+            url: string;
+            hasPaywall?: boolean;
+        }>;
+        x402Enabled?: boolean;
+    };
+    x402Enabled?: boolean;
 }
 
 const CATEGORIES = [
@@ -115,6 +134,13 @@ export function Marketplace() {
 
     // Available tags from loaded services
     const [availableTags, setAvailableTags] = useState<string[]>([]);
+
+    // Agent URL import (Phase 6)
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [importUrl, setImportUrl] = useState('');
+    const [importing, setImporting] = useState(false);
+    const [importError, setImportError] = useState<string | null>(null);
+    const [importedAgent, setImportedAgent] = useState<ServiceData | null>(null);
 
     useEffect(() => {
         fetchServices();
@@ -233,6 +259,92 @@ export function Marketplace() {
         );
     };
 
+    // Import agent from external URL (Phase 6)
+    const handleImportAgent = async () => {
+        if (!importUrl.trim()) {
+            setImportError('Please enter an agent URL');
+            return;
+        }
+
+        setImporting(true);
+        setImportError(null);
+
+        try {
+            // Try to fetch agent card from the URL
+            const urlsToTry = [
+                `${importUrl.replace(/\/$/, '')}/.well-known/agent-card.json`,
+                `${importUrl.replace(/\/$/, '')}/.well-known/agent.json`,
+                `${importUrl.replace(/\/$/, '')}/agent-card.json`
+            ];
+
+            let card = null;
+
+            for (const url of urlsToTry) {
+                try {
+                    const response = await fetch(url, {
+                        headers: { 'Accept': 'application/json' },
+                        signal: AbortSignal.timeout(10000)
+                    });
+                    if (response.ok) {
+                        card = await response.json();
+                        break;
+                    }
+                } catch {
+                    continue;
+                }
+            }
+
+            if (!card) {
+                setImportError('No agent card found. Agent must serve /.well-known/agent-card.json');
+                return;
+            }
+
+            // Create service data from agent card
+            const importedService: ServiceData = {
+                id: `external_${Date.now()}`,
+                name: card.name || 'Unknown Agent',
+                description: card.description || '',
+                endpointUrl: card.url || importUrl,
+                category: 'ai.agents',
+                reputation: {
+                    reputationScore: 80,
+                    totalPayments: 0,
+                    successRate: 100
+                },
+                agentCard: {
+                    name: card.name,
+                    description: card.description,
+                    url: card.url || importUrl,
+                    version: card.version,
+                    network: card.network,
+                    capabilities: card.capabilities || [],
+                    resources: (card.resources || []).map((r: any) => ({
+                        id: r.id,
+                        title: r.title,
+                        description: r.description,
+                        url: r.url,
+                        hasPaywall: !!r.paywall
+                    })),
+                    x402Enabled: !!card.x402 || card.resources?.some((r: any) => r.paywall)
+                },
+                x402Enabled: !!card.x402 || card.resources?.some((r: any) => r.paywall),
+                schema: {
+                    capabilities: card.capabilities || []
+                }
+            };
+
+            setImportedAgent(importedService);
+            setServices(prev => [importedService, ...prev]);
+            setShowImportModal(false);
+            setImportUrl('');
+
+        } catch (err) {
+            setImportError(err instanceof Error ? err.message : 'Failed to fetch agent card');
+        } finally {
+            setImporting(false);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
             {/* Hero Header */}
@@ -282,6 +394,18 @@ export function Marketplace() {
                                 <div className="text-3xl font-bold text-purple-400">{stats.totalVolume.toLocaleString()}</div>
                                 <div className="text-sm text-gray-300">Total Transactions</div>
                             </div>
+                        </div>
+
+                        {/* Import External Agent Button */}
+                        <div className="mt-6">
+                            <Button
+                                variant="outline"
+                                onClick={() => setShowImportModal(true)}
+                                className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+                            >
+                                <Link2 className="h-4 w-4 mr-2" />
+                                Import External Agent
+                            </Button>
                         </div>
                     </div>
                 </div>
@@ -589,6 +713,85 @@ export function Marketplace() {
                     </div>
                 </div>
             </footer>
+
+            {/* Import Agent Modal */}
+            {showImportModal && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <Card className="w-full max-w-lg border-0 shadow-2xl">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Link2 className="h-5 w-5" />
+                                Import External Agent
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <p className="text-sm text-gray-600">
+                                Enter the URL of an A2A-compliant agent to import it into your marketplace view.
+                                The agent must serve a card at <code className="bg-gray-100 px-1 rounded">/.well-known/agent-card.json</code>
+                            </p>
+
+                            <div className="space-y-2">
+                                <Input
+                                    placeholder="https://agent.example.com"
+                                    value={importUrl}
+                                    onChange={(e) => setImportUrl(e.target.value)}
+                                    className="w-full"
+                                />
+                                {importError && (
+                                    <p className="text-sm text-red-600 flex items-center gap-1">
+                                        <XCircle className="h-4 w-4" />
+                                        {importError}
+                                    </p>
+                                )}
+                            </div>
+
+                            {importedAgent && (
+                                <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                                    <div className="flex items-center gap-2 text-green-800">
+                                        <CheckCircle2 className="h-5 w-5" />
+                                        <span className="font-medium">Agent imported successfully!</span>
+                                    </div>
+                                    <p className="text-sm text-green-600 mt-1">
+                                        {importedAgent.name} has been added to your view.
+                                    </p>
+                                </div>
+                            )}
+
+                            <div className="flex gap-3 pt-4">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setShowImportModal(false);
+                                        setImportUrl('');
+                                        setImportError(null);
+                                        setImportedAgent(null);
+                                    }}
+                                    className="flex-1"
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    onClick={handleImportAgent}
+                                    disabled={importing || !importUrl.trim()}
+                                    className="flex-1 bg-[#111111] hover:bg-gray-800"
+                                >
+                                    {importing ? (
+                                        <>
+                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                            Importing...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Plus className="h-4 w-4 mr-2" />
+                                            Import Agent
+                                        </>
+                                    )}
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
         </div>
     );
 }
@@ -620,7 +823,7 @@ function MarketplaceServiceCard({
                         <CardTitle className="text-lg truncate group-hover:text-blue-600 transition-colors">
                             {service.name}
                         </CardTitle>
-                        <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <Badge variant="secondary" className="text-xs">
                                 {service.category || 'Uncategorized'}
                             </Badge>
@@ -628,6 +831,18 @@ function MarketplaceServiceCard({
                                 <Badge className="bg-emerald-100 text-emerald-700 text-xs">
                                     <CheckCircle2 className="h-3 w-3 mr-1" />
                                     Verified
+                                </Badge>
+                            )}
+                            {service.x402Enabled && (
+                                <Badge className="bg-blue-100 text-blue-700 text-xs">
+                                    <CreditCard className="h-3 w-3 mr-1" />
+                                    x402
+                                </Badge>
+                            )}
+                            {service.id.startsWith('external_') && (
+                                <Badge className="bg-purple-100 text-purple-700 text-xs">
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    External
                                 </Badge>
                             )}
                         </div>

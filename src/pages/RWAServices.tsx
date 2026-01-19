@@ -1,24 +1,42 @@
 /**
- * RWA Services Page
+ * RWA Services Page - Phase 9 Enhanced
  * 
- * View RWA service providers and settlement status
+ * Complete RWA asset management UI:
+ * - Asset minting with handoff
+ * - Lifecycle state visualization
+ * - Settlement tracking
+ * - Portfolio overview
  */
 
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Building2,
-    CheckCircle2,
-    XCircle,
-    Clock,
-    RefreshCw,
-    FileCheck,
-    ArrowRight,
-    Shield,
-    Zap,
-    DollarSign
+    Building2, CheckCircle2, XCircle, RefreshCw,
+    FileCheck, ArrowRight, DollarSign, Plus,
+    Box, TrendingUp, CreditCard, Eye, X, User, Activity
 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
+
+// ============================================
+// INTERFACES
+// ============================================
+
+interface RWAAsset {
+    assetId: string;
+    type: string;
+    name: string;
+    description: string;
+    owner: string;
+    value: string;
+    currency: string;
+    status: string;
+    metadata: Record<string, unknown>;
+    createdAt: string;
+}
 
 interface RWARequest {
     id: string;
@@ -40,48 +58,436 @@ interface RWARequest {
     settled_at: string | null;
 }
 
-const SERVICE_TYPES = [
-    { id: 'compliance_check', name: 'Compliance Check', icon: Shield, color: 'blue' },
-    { id: 'market_report', name: 'Market Report', icon: FileCheck, color: 'green' },
-    { id: 'trade_confirmation', name: 'Trade Confirmation', icon: CheckCircle2, color: 'purple' },
-    { id: 'price_verification', name: 'Price Verification', icon: DollarSign, color: 'orange' },
-    { id: 'execution_proof', name: 'Execution Proof', icon: Zap, color: 'amber' },
-    { id: 'data_attestation', name: 'Data Attestation', icon: Building2, color: 'indigo' },
+interface LifecycleEvent {
+    eventId: string;
+    assetId: string;
+    eventType: string;
+    actor: string;
+    data: Record<string, unknown>;
+    timestamp: string;
+    txHash?: string;
+}
+
+// ============================================
+// CONSTANTS
+// ============================================
+
+const ASSET_TYPES = [
+    { id: 'property', name: 'Property', icon: Building2, color: 'blue', description: 'Real estate assets' },
+    { id: 'invoice', name: 'Invoice', icon: FileCheck, color: 'green', description: 'Invoice financing' },
+    { id: 'receivable', name: 'Receivable', icon: DollarSign, color: 'orange', description: 'Account receivables' },
+    { id: 'equipment', name: 'Equipment', icon: Box, color: 'purple', description: 'Industrial equipment' },
+    { id: 'commodity', name: 'Commodity', icon: TrendingUp, color: 'amber', description: 'Commodity tokens' },
+    { id: 'bond', name: 'Bond', icon: CreditCard, color: 'indigo', description: 'Fixed income bonds' }
 ];
+
+// ============================================
+// MINT MODAL COMPONENT
+// ============================================
+
+function MintAssetModal({
+    isOpen,
+    onClose,
+    onMint
+}: {
+    isOpen: boolean;
+    onClose: () => void;
+    onMint: (data: any) => void;
+}) {
+    const [type, setType] = useState('property');
+    const [name, setName] = useState('');
+    const [description, setDescription] = useState('');
+    const [value, setValue] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!name.trim() || !value.trim()) return;
+
+        setLoading(true);
+        try {
+            await onMint({ type, name, description, value, currency: 'USDC' });
+            setName('');
+            setDescription('');
+            setValue('');
+            onClose();
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-lg"
+            >
+                <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-900">Mint RWA Asset</h2>
+                        <p className="text-sm text-gray-500">Tokenize a real-world asset</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+                        <X className="w-5 h-5 text-gray-500" />
+                    </button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                    {/* Asset Type Selection */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Asset Type
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {ASSET_TYPES.map(t => {
+                                const Icon = t.icon;
+                                const isSelected = type === t.id;
+                                return (
+                                    <button
+                                        key={t.id}
+                                        type="button"
+                                        onClick={() => setType(t.id)}
+                                        className={`p-3 rounded-lg border-2 text-center transition-all ${isSelected
+                                            ? 'border-emerald-500 bg-emerald-50'
+                                            : 'border-gray-200 hover:border-gray-300'
+                                            }`}
+                                    >
+                                        <Icon className={`w-5 h-5 mx-auto mb-1 ${isSelected ? 'text-emerald-600' : 'text-gray-400'
+                                            }`} />
+                                        <span className={`text-xs font-medium ${isSelected ? 'text-emerald-700' : 'text-gray-600'
+                                            }`}>
+                                            {t.name}
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Name */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Asset Name
+                        </label>
+                        <Input
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            placeholder="e.g., Manhattan Office Building"
+                            required
+                        />
+                    </div>
+
+                    {/* Description */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Description
+                        </label>
+                        <textarea
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            placeholder="Brief description of the asset..."
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 resize-none"
+                            rows={3}
+                        />
+                    </div>
+
+                    {/* Value */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Value (USDC)
+                        </label>
+                        <Input
+                            type="number"
+                            step="0.01"
+                            value={value}
+                            onChange={(e) => setValue(e.target.value)}
+                            placeholder="1000000.00"
+                            required
+                        />
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-3 pt-4">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={onClose}
+                            className="flex-1"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="submit"
+                            disabled={loading || !name.trim() || !value.trim()}
+                            className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                        >
+                            {loading ? (
+                                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                                <Plus className="w-4 h-4 mr-2" />
+                            )}
+                            Mint Asset
+                        </Button>
+                    </div>
+                </form>
+            </motion.div>
+        </div>
+    );
+}
+
+// ============================================
+// ASSET DETAIL MODAL
+// ============================================
+
+function AssetDetailModal({
+    asset,
+    events,
+    onClose
+}: {
+    asset: RWAAsset | null;
+    events: LifecycleEvent[];
+    onClose: () => void;
+}) {
+    if (!asset) return null;
+
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'active': return 'bg-green-100 text-green-700';
+            case 'minted': return 'bg-blue-100 text-blue-700';
+            case 'pending': return 'bg-yellow-100 text-yellow-700';
+            case 'frozen': return 'bg-red-100 text-red-700';
+            case 'redeemed': return 'bg-gray-100 text-gray-700';
+            default: return 'bg-gray-100 text-gray-600';
+        }
+    };
+
+    const getEventIcon = (type: string) => {
+        switch (type) {
+            case 'mint': return <Plus className="w-4 h-4" />;
+            case 'transfer': return <ArrowRight className="w-4 h-4" />;
+            case 'freeze': return <XCircle className="w-4 h-4" />;
+            case 'unfreeze': return <CheckCircle2 className="w-4 h-4" />;
+            case 'redeem': return <DollarSign className="w-4 h-4" />;
+            case 'payment': return <CreditCard className="w-4 h-4" />;
+            default: return <Activity className="w-4 h-4" />;
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+            >
+                <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-900">{asset.name}</h2>
+                        <p className="text-sm text-gray-500 font-mono">{asset.assetId.slice(0, 20)}...</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+                        <X className="w-5 h-5 text-gray-500" />
+                    </button>
+                </div>
+
+                <div className="p-6 overflow-y-auto flex-1">
+                    {/* Asset Info */}
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                        <div className="bg-gray-50 rounded-lg p-4">
+                            <div className="text-sm text-gray-500 mb-1">Value</div>
+                            <div className="text-2xl font-bold text-gray-900">${parseFloat(asset.value).toLocaleString()}</div>
+                            <div className="text-xs text-gray-500">{asset.currency}</div>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-4">
+                            <div className="text-sm text-gray-500 mb-1">Status</div>
+                            <Badge className={`${getStatusColor(asset.status)} capitalize`}>
+                                {asset.status}
+                            </Badge>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-4">
+                            <div className="text-sm text-gray-500 mb-1">Type</div>
+                            <div className="font-medium capitalize">{asset.type}</div>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-4">
+                            <div className="text-sm text-gray-500 mb-1">Created</div>
+                            <div className="text-sm">{new Date(asset.createdAt).toLocaleDateString()}</div>
+                        </div>
+                    </div>
+
+                    {/* Description */}
+                    {asset.description && (
+                        <div className="mb-6">
+                            <h3 className="text-sm font-medium text-gray-700 mb-2">Description</h3>
+                            <p className="text-gray-600 text-sm">{asset.description}</p>
+                        </div>
+                    )}
+
+                    {/* Owner */}
+                    <div className="mb-6">
+                        <h3 className="text-sm font-medium text-gray-700 mb-2">Owner</h3>
+                        <div className="flex items-center gap-2">
+                            <User className="w-4 h-4 text-gray-400" />
+                            <span className="font-mono text-sm text-gray-600">
+                                {asset.owner.slice(0, 10)}...{asset.owner.slice(-8)}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Lifecycle Events */}
+                    <div>
+                        <h3 className="text-sm font-medium text-gray-700 mb-3">Lifecycle Events</h3>
+                        <div className="space-y-3">
+                            {events.length === 0 ? (
+                                <div className="text-center py-6 text-gray-500 text-sm">
+                                    No lifecycle events yet
+                                </div>
+                            ) : (
+                                events.map((event, i) => (
+                                    <motion.div
+                                        key={event.eventId}
+                                        initial={{ opacity: 0, x: -10 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: i * 0.05 }}
+                                        className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg"
+                                    >
+                                        <div className="p-2 bg-white rounded-lg border border-gray-200">
+                                            {getEventIcon(event.eventType)}
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-medium text-sm capitalize">
+                                                    {event.eventType}
+                                                </span>
+                                                <span className="text-xs text-gray-500">
+                                                    {new Date(event.timestamp).toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-gray-500 font-mono mt-1">
+                                                By: {event.actor.slice(0, 8)}...
+                                            </p>
+                                            {event.txHash && (
+                                                <p className="text-xs text-blue-600 font-mono mt-1">
+                                                    Tx: {event.txHash.slice(0, 16)}...
+                                                </p>
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </motion.div>
+        </div>
+    );
+}
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 
 export default function RWAServices() {
     const [requests, setRequests] = useState<RWARequest[]>([]);
+    const [assets, setAssets] = useState<RWAAsset[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedType, setSelectedType] = useState<string | null>(null);
+    const [showMintModal, setShowMintModal] = useState(false);
+    const [selectedAsset, setSelectedAsset] = useState<RWAAsset | null>(null);
+    const [assetEvents, setAssetEvents] = useState<LifecycleEvent[]>([]);
+    const [activeTab, setActiveTab] = useState<'assets' | 'settlements'>('assets');
 
-    useEffect(() => {
-        loadRequests();
+    const loadData = useCallback(async () => {
+        setLoading(true);
+        try {
+            const [requestsRes, assetsRes] = await Promise.all([
+                supabase
+                    .from('rwa_execution_requests')
+                    .select('*')
+                    .order('requested_at', { ascending: false })
+                    .limit(50),
+                supabase
+                    .from('rwa_assets')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .limit(50)
+            ]);
+
+            setRequests(requestsRes.data || []);
+            setAssets((assetsRes.data || []).map(a => ({
+                assetId: a.asset_id,
+                type: a.type,
+                name: a.name,
+                description: a.description,
+                owner: a.owner_address,
+                value: a.value,
+                currency: a.currency,
+                status: a.status,
+                metadata: a.metadata,
+                createdAt: a.created_at
+            })));
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
-    async function loadRequests() {
-        setLoading(true);
-        const { data } = await supabase
-            .from('rwa_execution_requests')
-            .select('*')
-            .order('requested_at', { ascending: false })
-            .limit(50);
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
 
-        setRequests(data || []);
-        setLoading(false);
-    }
+    const handleViewAsset = async (asset: RWAAsset) => {
+        setSelectedAsset(asset);
+        const { data } = await supabase
+            .from('rwa_lifecycle_events')
+            .select('*')
+            .eq('asset_id', asset.assetId)
+            .order('timestamp', { ascending: false });
+        setAssetEvents((data || []).map(e => ({
+            eventId: e.event_id,
+            assetId: e.asset_id,
+            eventType: e.event_type,
+            actor: e.actor,
+            data: e.data,
+            timestamp: e.timestamp,
+            txHash: e.tx_hash
+        })));
+    };
+
+    const handleMintAsset = async (data: any) => {
+        try {
+            const response = await fetch('/api/rwa/assets/mint', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...data,
+                    owner: '0x742d35Cc6634C0532925a3b844Bc454e4438f51B' // Demo address
+                })
+            });
+
+            if (response.ok) {
+                await loadData();
+            }
+        } catch (err) {
+            console.error('Mint failed:', err);
+        }
+    };
 
     function getStatusBadge(status: string) {
         switch (status) {
             case 'settled':
-                return <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">Settled</span>;
+                return <Badge className="bg-green-100 text-green-700">Settled</Badge>;
             case 'verified':
-                return <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">Verified</span>;
+                return <Badge className="bg-blue-100 text-blue-700">Verified</Badge>;
             case 'refunded':
-                return <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-medium">Refunded</span>;
+                return <Badge className="bg-red-100 text-red-700">Refunded</Badge>;
             case 'failed':
-                return <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-medium">Failed</span>;
+                return <Badge className="bg-red-100 text-red-700">Failed</Badge>;
             default:
-                return <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-medium">Pending</span>;
+                return <Badge className="bg-amber-100 text-amber-700">Pending</Badge>;
         }
     }
 
@@ -90,10 +496,10 @@ export default function RWAServices() {
     }
 
     const stats = {
-        total: requests.length,
-        settled: requests.filter(r => r.status === 'settled').length,
-        refunded: requests.filter(r => r.status === 'refunded').length,
-        totalValue: requests.filter(r => r.status === 'settled').reduce((sum, r) => sum + parseFloat(r.price || '0'), 0),
+        totalAssets: assets.length,
+        activeAssets: assets.filter(a => a.status === 'active' || a.status === 'minted').length,
+        totalValue: assets.reduce((sum, a) => sum + parseFloat(a.value || '0'), 0),
+        settlements: requests.filter(r => r.status === 'settled').length
     };
 
     return (
@@ -104,192 +510,353 @@ export default function RWAServices() {
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
                             <Building2 className="w-8 h-8 text-emerald-500" />
-                            RWA Settlement
+                            RWA Management
                         </h1>
                         <p className="text-gray-600 mt-1">
-                            Real-world service verification with SLA-backed escrow payments
+                            Real-world asset tokenization and settlement
                         </p>
                     </div>
-                    <button
-                        onClick={loadRequests}
-                        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition"
-                    >
-                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                        Refresh
-                    </button>
+                    <div className="flex gap-3">
+                        <Button
+                            variant="outline"
+                            onClick={loadData}
+                            disabled={loading}
+                        >
+                            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                            Refresh
+                        </Button>
+                        <Button
+                            onClick={() => setShowMintModal(true)}
+                            className="bg-emerald-600 hover:bg-emerald-700"
+                        >
+                            <Plus className="w-4 h-4 mr-2" />
+                            Mint Asset
+                        </Button>
+                    </div>
                 </div>
 
                 {/* Stats */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                    <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
-                        <div className="text-sm text-gray-500">Total Requests</div>
-                        <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
-                    </div>
-                    <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
-                        <div className="text-sm text-gray-500">Settled</div>
-                        <div className="text-2xl font-bold text-green-600">{stats.settled}</div>
-                    </div>
-                    <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
-                        <div className="text-sm text-gray-500">Refunded</div>
-                        <div className="text-2xl font-bold text-red-600">{stats.refunded}</div>
-                    </div>
-                    <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
-                        <div className="text-sm text-gray-500">Total Value Settled</div>
-                        <div className="text-2xl font-bold text-emerald-600">${stats.totalValue.toFixed(2)}</div>
-                    </div>
+                    <Card className="border-0 shadow-sm">
+                        <CardContent className="p-4">
+                            <div className="text-sm text-gray-500">Total Assets</div>
+                            <div className="text-2xl font-bold text-gray-900">{stats.totalAssets}</div>
+                        </CardContent>
+                    </Card>
+                    <Card className="border-0 shadow-sm">
+                        <CardContent className="p-4">
+                            <div className="text-sm text-gray-500">Active Assets</div>
+                            <div className="text-2xl font-bold text-green-600">{stats.activeAssets}</div>
+                        </CardContent>
+                    </Card>
+                    <Card className="border-0 shadow-sm">
+                        <CardContent className="p-4">
+                            <div className="text-sm text-gray-500">Total Value</div>
+                            <div className="text-2xl font-bold text-emerald-600">${stats.totalValue.toLocaleString()}</div>
+                        </CardContent>
+                    </Card>
+                    <Card className="border-0 shadow-sm">
+                        <CardContent className="p-4">
+                            <div className="text-sm text-gray-500">Settlements</div>
+                            <div className="text-2xl font-bold text-blue-600">{stats.settlements}</div>
+                        </CardContent>
+                    </Card>
                 </div>
 
-                {/* Service Types */}
-                <div className="mb-8">
-                    <h2 className="text-lg font-semibold text-gray-900 mb-4">Service Types</h2>
-                    <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-                        {SERVICE_TYPES.map(type => {
-                            const Icon = type.icon;
-                            const isSelected = selectedType === type.id;
-                            return (
-                                <motion.button
-                                    key={type.id}
-                                    onClick={() => setSelectedType(isSelected ? null : type.id)}
-                                    className={`p-4 rounded-xl border transition text-center ${isSelected
+                {/* Tabs */}
+                <div className="flex gap-2 mb-6">
+                    <button
+                        onClick={() => setActiveTab('assets')}
+                        className={`px-4 py-2 rounded-lg font-medium transition ${activeTab === 'assets'
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-white text-gray-600 hover:bg-gray-50'
+                            }`}
+                    >
+                        <Box className="w-4 h-4 inline mr-2" />
+                        Assets ({assets.length})
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('settlements')}
+                        className={`px-4 py-2 rounded-lg font-medium transition ${activeTab === 'settlements'
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-white text-gray-600 hover:bg-gray-50'
+                            }`}
+                    >
+                        <CheckCircle2 className="w-4 h-4 inline mr-2" />
+                        Settlements ({requests.length})
+                    </button>
+                </div>
+
+                {/* Asset Types Filter */}
+                {activeTab === 'assets' && (
+                    <div className="mb-6">
+                        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                            {ASSET_TYPES.map(type => {
+                                const Icon = type.icon;
+                                const isSelected = selectedType === type.id;
+                                const count = assets.filter(a => a.type === type.id).length;
+                                return (
+                                    <motion.button
+                                        key={type.id}
+                                        onClick={() => setSelectedType(isSelected ? null : type.id)}
+                                        className={`p-4 rounded-xl border transition text-center ${isSelected
                                             ? 'bg-emerald-50 border-emerald-300 ring-2 ring-emerald-200'
                                             : 'bg-white border-gray-200 hover:border-emerald-200'
-                                        }`}
-                                    whileHover={{ scale: 1.02 }}
-                                    whileTap={{ scale: 0.98 }}
-                                >
-                                    <Icon className={`w-6 h-6 mx-auto mb-2 ${isSelected ? 'text-emerald-600' : 'text-gray-400'}`} />
-                                    <div className={`text-xs font-medium ${isSelected ? 'text-emerald-700' : 'text-gray-600'}`}>
-                                        {type.name}
-                                    </div>
-                                </motion.button>
-                            );
-                        })}
+                                            }`}
+                                        whileHover={{ scale: 1.02 }}
+                                        whileTap={{ scale: 0.98 }}
+                                    >
+                                        <Icon className={`w-6 h-6 mx-auto mb-2 ${isSelected ? 'text-emerald-600' : 'text-gray-400'
+                                            }`} />
+                                        <div className={`text-xs font-medium ${isSelected ? 'text-emerald-700' : 'text-gray-600'
+                                            }`}>
+                                            {type.name}
+                                        </div>
+                                        <Badge variant="secondary" className="mt-1">
+                                            {count}
+                                        </Badge>
+                                    </motion.button>
+                                );
+                            })}
+                        </div>
                     </div>
-                </div>
+                )}
 
                 {/* RWA Flow Diagram */}
                 <div className="bg-gradient-to-r from-emerald-500 to-teal-500 rounded-xl p-6 mb-8 text-white">
-                    <h3 className="font-semibold mb-4">RWA Settlement Flow</h3>
+                    <h3 className="font-semibold mb-4">RWA Lifecycle Flow</h3>
                     <div className="flex items-center justify-between flex-wrap gap-4">
-                        <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-sm font-bold">1</div>
-                            <span className="text-sm">Register SLA</span>
-                        </div>
-                        <ArrowRight className="w-4 h-4 opacity-50" />
-                        <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-sm font-bold">2</div>
-                            <span className="text-sm">Request Execution</span>
-                        </div>
-                        <ArrowRight className="w-4 h-4 opacity-50" />
-                        <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-sm font-bold">3</div>
-                            <span className="text-sm">Submit Proof</span>
-                        </div>
-                        <ArrowRight className="w-4 h-4 opacity-50" />
-                        <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-sm font-bold">4</div>
-                            <span className="text-sm">Verify SLA</span>
-                        </div>
-                        <ArrowRight className="w-4 h-4 opacity-50" />
-                        <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-sm font-bold">5</div>
-                            <span className="text-sm">Settle/Refund</span>
-                        </div>
+                        {['Mint Asset', 'Handoff Sign', 'Active', 'Agent Manage', 'Settle/Redeem'].map((step, i) => (
+                            <div key={step} className="flex items-center gap-2">
+                                <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-sm font-bold">
+                                    {i + 1}
+                                </div>
+                                <span className="text-sm">{step}</span>
+                                {i < 4 && <ArrowRight className="w-4 h-4 opacity-50 hidden md:block" />}
+                            </div>
+                        ))}
                     </div>
                 </div>
 
-                {/* Requests Table */}
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                    <div className="p-4 border-b border-gray-100">
-                        <h2 className="font-semibold text-gray-900">Execution Requests</h2>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead className="bg-gray-50">
-                                <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Request ID</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Service</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Agent</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Latency</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {requests.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
-                                            <FileCheck className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                                            <p>No RWA execution requests yet</p>
-                                            <p className="text-sm mt-1">Use MCP tools to create RWA service requests</p>
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    requests
-                                        .filter(r => !selectedType || r.service_id.includes(selectedType))
-                                        .map(request => (
-                                            <motion.tr
-                                                key={request.id}
-                                                initial={{ opacity: 0 }}
-                                                animate={{ opacity: 1 }}
-                                                className="hover:bg-gray-50"
-                                            >
-                                                <td className="px-4 py-3 font-mono text-sm text-gray-900">
-                                                    {request.request_id.slice(0, 12)}...
-                                                </td>
-                                                <td className="px-4 py-3 text-sm text-gray-600">
-                                                    {request.service_id.replace('rwa_', '').replace(/_/g, ' ')}
-                                                </td>
-                                                <td className="px-4 py-3 font-mono text-sm text-gray-600">
-                                                    {formatAddress(request.agent_address)}
-                                                </td>
-                                                <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                                                    ${parseFloat(request.price).toFixed(2)}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    {getStatusBadge(request.status)}
-                                                </td>
-                                                <td className="px-4 py-3 text-sm text-gray-500">
-                                                    {request.verification?.slaMetrics?.latencyMs
-                                                        ? `${request.verification.slaMetrics.latencyMs}ms`
-                                                        : '-'}
-                                                </td>
-                                                <td className="px-4 py-3 text-sm text-gray-500">
-                                                    {new Date(request.requested_at).toLocaleDateString()}
-                                                </td>
-                                            </motion.tr>
-                                        ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                {/* Content */}
+                <AnimatePresence mode="wait">
+                    {activeTab === 'assets' ? (
+                        <motion.div
+                            key="assets"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                        >
+                            <Card className="border-0 shadow-sm">
+                                <CardHeader className="border-b bg-gray-50">
+                                    <CardTitle className="text-lg">RWA Assets</CardTitle>
+                                </CardHeader>
+                                <CardContent className="p-0">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead className="bg-gray-50">
+                                                <tr>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Asset</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Value</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
+                                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {assets.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan={6} className="px-4 py-12 text-center text-gray-500">
+                                                            <Box className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                                                            <p>No RWA assets yet</p>
+                                                            <Button
+                                                                onClick={() => setShowMintModal(true)}
+                                                                className="mt-4 bg-emerald-600 hover:bg-emerald-700"
+                                                                size="sm"
+                                                            >
+                                                                <Plus className="w-4 h-4 mr-2" />
+                                                                Mint Your First Asset
+                                                            </Button>
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    assets
+                                                        .filter(a => !selectedType || a.type === selectedType)
+                                                        .map(asset => (
+                                                            <motion.tr
+                                                                key={asset.assetId}
+                                                                initial={{ opacity: 0 }}
+                                                                animate={{ opacity: 1 }}
+                                                                className="hover:bg-gray-50"
+                                                            >
+                                                                <td className="px-4 py-3">
+                                                                    <div className="font-medium text-gray-900">{asset.name}</div>
+                                                                    <div className="text-xs text-gray-500 font-mono">
+                                                                        {asset.assetId.slice(0, 16)}...
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-4 py-3">
+                                                                    <Badge variant="outline" className="capitalize">
+                                                                        {asset.type}
+                                                                    </Badge>
+                                                                </td>
+                                                                <td className="px-4 py-3 text-right font-mono font-medium">
+                                                                    ${parseFloat(asset.value).toLocaleString()}
+                                                                </td>
+                                                                <td className="px-4 py-3 text-center">
+                                                                    <Badge className={`capitalize ${asset.status === 'active' || asset.status === 'minted'
+                                                                        ? 'bg-green-100 text-green-700'
+                                                                        : asset.status === 'pending'
+                                                                            ? 'bg-yellow-100 text-yellow-700'
+                                                                            : 'bg-gray-100 text-gray-600'
+                                                                        }`}>
+                                                                        {asset.status}
+                                                                    </Badge>
+                                                                </td>
+                                                                <td className="px-4 py-3 font-mono text-sm text-gray-600">
+                                                                    {formatAddress(asset.owner)}
+                                                                </td>
+                                                                <td className="px-4 py-3 text-right">
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        onClick={() => handleViewAsset(asset)}
+                                                                    >
+                                                                        <Eye className="w-4 h-4 mr-1" />
+                                                                        View
+                                                                    </Button>
+                                                                </td>
+                                                            </motion.tr>
+                                                        ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </motion.div>
+                    ) : (
+                        <motion.div
+                            key="settlements"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                        >
+                            <Card className="border-0 shadow-sm">
+                                <CardHeader className="border-b bg-gray-50">
+                                    <CardTitle className="text-lg">Execution Requests</CardTitle>
+                                </CardHeader>
+                                <CardContent className="p-0">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead className="bg-gray-50">
+                                                <tr>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Request ID</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Service</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Agent</th>
+                                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Price</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Latency</th>
+                                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Date</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {requests.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
+                                                            <FileCheck className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                                                            <p>No execution requests yet</p>
+                                                            <p className="text-sm mt-1">Use MCP tools to create RWA service requests</p>
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    requests.map(request => (
+                                                        <motion.tr
+                                                            key={request.id}
+                                                            initial={{ opacity: 0 }}
+                                                            animate={{ opacity: 1 }}
+                                                            className="hover:bg-gray-50"
+                                                        >
+                                                            <td className="px-4 py-3 font-mono text-sm text-gray-900">
+                                                                {request.request_id.slice(0, 12)}...
+                                                            </td>
+                                                            <td className="px-4 py-3 text-sm text-gray-600">
+                                                                {request.service_id.replace('rwa_', '').replace(/_/g, ' ')}
+                                                            </td>
+                                                            <td className="px-4 py-3 font-mono text-sm text-gray-600">
+                                                                {formatAddress(request.agent_address)}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right text-sm font-medium text-gray-900">
+                                                                ${parseFloat(request.price).toFixed(2)}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-center">
+                                                                {getStatusBadge(request.status)}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right text-sm text-gray-500">
+                                                                {request.verification?.slaMetrics?.latencyMs
+                                                                    ? `${request.verification.slaMetrics.latencyMs}ms`
+                                                                    : '-'}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right text-sm text-gray-500">
+                                                                {new Date(request.requested_at).toLocaleDateString()}
+                                                            </td>
+                                                        </motion.tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
                 {/* Info Card */}
-                <div className="mt-8 bg-emerald-50 border border-emerald-200 rounded-xl p-6">
-                    <h3 className="font-semibold text-emerald-900 mb-2">What is RWA Settlement?</h3>
-                    <p className="text-emerald-700 text-sm mb-4">
-                        RWA (Real-World Asset) Settlement enables agents to pay for real-world services with on-chain
-                        escrow guarantees. Providers register services with SLA terms, agents request execution,
-                        and payments are automatically released or refunded based on proof verification.
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                        <div className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5" />
-                            <span className="text-emerald-700">SLA-backed verification</span>
+                <Card className="mt-8 bg-emerald-50 border-emerald-200">
+                    <CardContent className="p-6">
+                        <h3 className="font-semibold text-emerald-900 mb-2">What is RWA Management?</h3>
+                        <p className="text-emerald-700 text-sm mb-4">
+                            RWA (Real-World Asset) Management enables tokenization of physical assets with
+                            on-chain escrow guarantees. Mint assets, manage their lifecycle through agents,
+                            and settle payments automatically based on proof verification.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                            <div className="flex items-start gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5" />
+                                <span className="text-emerald-700">Handoff-signed minting</span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5" />
+                                <span className="text-emerald-700">Full lifecycle tracking</span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5" />
+                                <span className="text-emerald-700">SLA-backed settlements</span>
+                            </div>
                         </div>
-                        <div className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5" />
-                            <span className="text-emerald-700">Automatic settlement/refund</span>
-                        </div>
-                        <div className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5" />
-                            <span className="text-emerald-700">No custody or legal claims</span>
-                        </div>
-                    </div>
-                </div>
+                    </CardContent>
+                </Card>
             </div>
+
+            {/* Modals */}
+            <AnimatePresence>
+                {showMintModal && (
+                    <MintAssetModal
+                        isOpen={showMintModal}
+                        onClose={() => setShowMintModal(false)}
+                        onMint={handleMintAsset}
+                    />
+                )}
+                {selectedAsset && (
+                    <AssetDetailModal
+                        asset={selectedAsset}
+                        events={assetEvents}
+                        onClose={() => setSelectedAsset(null)}
+                    />
+                )}
+            </AnimatePresence>
         </div>
     );
 }
