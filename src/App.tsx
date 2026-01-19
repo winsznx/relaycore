@@ -1,13 +1,12 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Menu, X, ShieldCheck, CheckCircle2, Search } from 'lucide-react'
+import { Menu, X, CheckCircle2, Search } from 'lucide-react'
 import { Link, useNavigate, useLocation, Navigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import phoneMockup from '@/assets/phone-mockup.png'
 import featurePayment from '@/assets/feature-payment.png'
 import featureReputation from '@/assets/feature-reputation.png'
 import featureDiscovery from '@/assets/feature-discovery.png'
@@ -48,7 +47,7 @@ import DocsTradeExample from '@/pages/docs/examples/TradeExample';
 import DocsRegisterExample from '@/pages/docs/examples/RegisterExample';
 import DocsFeedbackExample from '@/pages/docs/examples/FeedbackExample';
 import DocsValidationExample from '@/pages/docs/examples/ValidationExample';
-import DocPage from '@/pages/docs/DocPage';
+
 
 // --- Navbar ---
 
@@ -57,9 +56,9 @@ function Navbar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const location = useLocation()
 
   const NAV_LINKS = [
-    { label: 'Features', href: '#features' },
-    { label: 'How it Works', href: '#how-it-works' },
-    { label: 'Pricing', href: '#pricing' },
+    { label: 'Primitives', href: '#primitives' },
+    { label: 'Protocol Flow', href: '#protocol-flow' },
+    { label: 'Intelligence', href: '#intelligence' },
     { label: 'Docs', href: '/docs' },
   ]
 
@@ -164,21 +163,21 @@ function HeroSection() {
           className="max-w-5xl mx-auto"
         >
           <Badge variant="outline" className="mb-8 px-6 py-2 rounded-full border-gray-200 bg-white/80 backdrop-blur-md text-[#111111] font-semibold text-sm tracking-wide shadow-sm">
-            The Trust Layer for Cronos Agents
+            Infrastructure for Agentic Finance on Cronos
           </Badge>
           <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold text-[#111111] tracking-tight leading-[1.05] mb-8">
-            Financial Clarity <br />
-            <span className="text-gray-400">You Can Trust</span>
+            x402-Native Payment <br />
+            <span className="text-gray-400">Execution Layer</span>
           </h1>
           <p className="text-xl md:text-2xl text-gray-600 max-w-3xl mx-auto mb-8 leading-relaxed">
-            Relay Core provides payment memory, reputation scoring, and service discovery infrastructure for the autonomous agent economy.
+            Agent-initiated payments. On-chain settlement. Real-time indexed intelligence. A public MCP-compatible backend for autonomous execution on Cronos.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mb-12">
-            <Button size="lg" className="h-16 px-10 rounded-full bg-[#111111] text-white hover:bg-black text-lg font-semibold shadow-xl shadow-black/10 w-full sm:w-auto" onClick={() => navigate('/app')}>
-              Start Building Now
+            <Button size="lg" className="h-16 px-10 rounded-full bg-[#111111] text-white hover:bg-black text-lg font-semibold shadow-xl shadow-black/10 w-full sm:w-auto" onClick={() => navigate('/docs')}>
+              Documentation
             </Button>
-            <Button size="lg" variant="outline" className="h-16 px-10 rounded-full border-gray-200 text-[#111111] hover:bg-gray-50 text-lg font-semibold w-full sm:w-auto bg-white shadow-sm" onClick={() => navigate('/docs')}>
-              Read The Docs
+            <Button size="lg" variant="outline" className="h-16 px-10 rounded-full border-gray-200 text-[#111111] hover:bg-gray-50 text-lg font-semibold w-full sm:w-auto bg-white shadow-sm" onClick={() => navigate('/playground')}>
+              Playground
             </Button>
           </div>
 
@@ -234,28 +233,28 @@ function HowItWorksSection() {
 
   const steps = [
     {
-      title: "Agent Discovers Services",
-      description: "AI agents query Relay Core to find reliable services. Filter by category, reputation score, and price.",
+      title: "Agent Discovers Endpoint",
+      description: "Agent queries MCP-compatible resource registry. Filters by capability, reputation score, and settlement terms. All discovery is deterministic and indexed.",
       diagram: "discovery"
     },
     {
-      title: "x402 Payment Triggered",
-      description: "When a service is selected, the agent initiates an x402 payment. The transaction is signed and broadcast to Cronos.",
+      title: "x402 Payment Challenge Issued",
+      description: "Resource returns HTTP 402 with payment challenge. Challenge includes amount, recipient address, and settlement endpoint. Agent validates terms before proceeding.",
       diagram: "payment"
     },
     {
-      title: "Payment Indexed",
-      description: "Relay Core indexes the payment transaction in real-time. Every x402 payment on Cronos is captured and stored.",
+      title: "Wallet Handoff and Signing",
+      description: "Agent hands off payment to wallet for signature. Transaction is signed with EIP-3009 transferWithAuthorization. No gas required from agent.",
       diagram: "indexing"
     },
     {
-      title: "Outcome Recorded",
-      description: "After service delivery, the outcome (success/failure, latency) is recorded. This builds the service's track record.",
+      title: "Execution and Settlement",
+      description: "Signed payment is submitted to settlement endpoint. Resource validates signature, executes service, and records outcome. All state transitions are atomic.",
       diagram: "outcome"
     },
     {
-      title: "Reputation Updated",
-      description: "A deterministic reputation score is calculated: 50% success rate + 20% volume + 20% repeat customers + 10% recency.",
+      title: "Indexed and Reputation Updated",
+      description: "Payment, execution, and outcome are indexed in real-time. Reputation score is recalculated deterministically: 50% success rate, 20% volume, 20% repeat usage, 10% recency.",
       diagram: "reputation"
     }
   ]
@@ -269,7 +268,7 @@ function HowItWorksSection() {
   }, [steps.length])
 
   return (
-    <section id="how-it-works" className="min-h-[100dvh] md:snap-start bg-gradient-to-b from-white via-gray-50 to-white w-full flex flex-col justify-center items-center px-6 py-20 scroll-mt-0 overflow-hidden">
+    <section id="protocol-flow" className="min-h-[100dvh] md:snap-start bg-gradient-to-b from-white via-gray-50 to-white w-full flex flex-col justify-center items-center px-6 py-20 scroll-mt-0 overflow-hidden">
       <div className="container mx-auto px-6 text-center max-w-5xl">
         {/* Section Title */}
         <motion.h2
@@ -277,9 +276,8 @@ function HowItWorksSection() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           className="text-4xl md:text-6xl font-bold text-[#111111] mb-16 tracking-tight"
-          style={{ fontFamily: "'Playfair Display', serif" }}
         >
-          How it <span className="italic text-[#2A4425]">works</span>
+          Execution Flow
         </motion.h2>
 
         {/* Interactive Diagram Area */}
@@ -329,13 +327,13 @@ function HowItWorksSection() {
           </motion.p>
         </AnimatePresence>
 
-        {/* Trust Ecosystem Title */}
+        {/* System Architecture Title */}
         <div className="mt-24 text-left">
           <h3 className="text-3xl md:text-5xl font-bold text-[#111111]">
-            Our trust
+            Infrastructure
           </h3>
           <h3 className="text-3xl md:text-5xl font-bold italic text-[#2A4425]" style={{ fontFamily: "'Playfair Display', serif" }}>
-            ecosystem
+            primitives
           </h3>
         </div>
       </div>
@@ -667,119 +665,272 @@ function FeatureSection({
 
 function Features() {
   return (
-    <div id="features" className="w-full">
+    <div id="primitives" className="w-full">
       <FeatureSection
         id="payment-memory"
         bg="bg-[#E9F9F0]"
-        title="Payment Memory & Indexing"
-        description="Agents often operate blindly. Relay Core indexes every x402 payment, giving your agents historical memory to assess reliability before spending a single cent."
+        title="x402 Payment Memory"
+        description="Every x402 payment on Cronos is indexed and queryable. Agents access historical payment data, settlement outcomes, and latency metrics before initiating execution. No trust required."
         image={featurePayment}
-        tags={['Historical Data', 'x402 Indexing', 'Latency Tracking']}
+        tags={['On-Chain Settlement', 'Real-Time Indexing', 'Verifiable History']}
       />
       <FeatureSection
         id="reputation"
         bg="bg-[#E6F5F6]"
-        title="Reputation Scoring"
-        description="Trust signals you can verify. Our deterministic scoring algorithm evaluates success rates, volume, and recency to provide a realtime 0-100 trust score for every service."
+        title="Deterministic Reputation"
+        description="Reputation scores are computed deterministically from indexed on-chain data. Formula: 50% success rate, 20% volume, 20% repeat usage, 10% recency. No subjective input. Fully auditable."
         image={featureReputation}
-        tags={['Proof of Outcome', 'Real-time Scores', 'Sybil Resistant']}
+        tags={['Deterministic Scoring', 'On-Chain Proof', 'Sybil Resistant']}
         reversed
       />
       <FeatureSection
         id="service-discovery"
         bg="bg-[#F6E6E6]"
-        title="Service Discovery API"
-        description="Don't build scratchers. Use our GraphQL API to instantly find the highest-rated KYC, Oracle, or Data services. Filter by price, reputation, and uptime."
+        title="MCP-Compatible Discovery"
+        description="Public GraphQL and REST APIs for agent resource discovery. Query by capability, reputation threshold, and settlement terms. MCP server provides 53 tools for agent integration."
         image={featureDiscovery}
-        tags={['GraphQL', 'REST API', '< 100ms Latency']}
+        tags={['GraphQL API', 'MCP Protocol', 'Sub-100ms Latency']}
       />
     </div>
   )
 }
 
-function PricingSection() {
+function IntelligenceSection() {
   return (
-    <section id="pricing" className="min-h-[100dvh] md:snap-start bg-white w-full flex flex-col justify-center px-6 pt-28 pb-12 scroll-mt-0">
-      <div className="container mx-auto px-6 max-w-7xl text-center">
-        <h2 className="text-4xl font-bold text-[#111111] mb-4">Simple, Transparent Pricing</h2>
-        <p className="text-xl text-gray-500 mb-16 max-w-2xl mx-auto">Start for free, scale as you grow. No hidden fees.</p>
-
-        <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-          {[
-            { name: 'Developer', price: '$0', desc: 'For hacking and experiments', features: ['1,000 requests/mo', 'Basic Reputation Score', 'Community Support'] },
-            { name: 'Startup', price: '$49', desc: 'For growing agent networks', features: ['100,000 requests/mo', 'Real-time Webhooks', 'Priority Support', 'Full History Access'], popular: true },
-            { name: 'Enterprise', price: 'Custom', desc: 'For large-scale autonomous systems', features: ['Unlimited requests', 'SLA Guarantee', 'Dedicated Account Manager', 'Custom Integrations'] }
-          ].map((plan) => (
-            <Card key={plan.name} className={`border-2 ${plan.popular ? 'border-[#111111] shadow-2xl scale-105' : 'border-gray-100 shadow-sm'} rounded-[2rem] flex flex-col`}>
-              <CardContent className="p-8 flex flex-col h-full">
-                {plan.popular && <Badge className="self-center mb-4 bg-[#FFD84D] text-[#111111] hover:bg-[#FFD84D]">Most Popular</Badge>}
-                <h3 className="text-2xl font-bold text-[#111111] mb-2">{plan.name}</h3>
-                <div className="text-4xl font-bold mb-2">{plan.price}<span className="text-base font-normal text-gray-500">/mo</span></div>
-                <p className="text-gray-500 mb-8">{plan.desc}</p>
-                <div className="space-y-4 mb-8 flex-1 text-left">
-                  {plan.features.map((f) => (
-                    <div key={f} className="flex items-center gap-3">
-                      <CheckCircle2 size={18} className="text-green-600" />
-                      <span className="text-gray-700">{f}</span>
-                    </div>
-                  ))}
-                </div>
-                <Button className={`w-full h-12 rounded-full ${plan.popular ? 'bg-[#111111] text-white hover:bg-black' : 'bg-gray-100 text-[#111111] hover:bg-gray-200'}`}>
-                  Choose {plan.name}
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function Testimonials() {
-  return (
-    <section className="min-h-[100dvh] md:snap-start bg-white w-full flex flex-col justify-center px-6 pt-28 pb-12">
+    <section id="intelligence" className="min-h-[100dvh] md:snap-start bg-white w-full flex flex-col justify-center px-6 pt-28 pb-12 scroll-mt-0">
       <div className="container mx-auto px-6 max-w-7xl">
-        <h2 className="text-4xl md:text-5xl font-bold text-center text-[#111111] mb-20">Hear From Our Happy Clients</h2>
+        <div className="text-center mb-16">
+          <h2 className="text-4xl md:text-6xl font-bold text-[#111111] mb-4 tracking-tight">Public Intelligence Layer</h2>
+          <p className="text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
+            Every execution is indexed. Every payment is queryable. Every outcome is verifiable. RelayCore acts as a shared source of truth for agent activity on Cronos.
+          </p>
+        </div>
 
-        <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-          <Card className="bg-[#2A4425] text-white border-none p-8 rounded-[2rem] shadow-2xl">
-            <CardContent className="space-y-6">
-              <h3 className="text-2xl font-bold">FastKYC Oracle</h3>
-              <p className="text-white/80 text-lg leading-relaxed">
-                "Managing reputation for our oracle node used to be impossible. Relay Core made it effortless. Now agents trust us automatically."
+        <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+          <Card className="border-2 border-gray-100 rounded-[2rem] shadow-sm">
+            <CardContent className="p-8">
+              <div className="w-12 h-12 bg-[#E9F9F0] rounded-xl flex items-center justify-center mb-6">
+                <span className="text-2xl font-bold text-[#2A4425]">∞</span>
+              </div>
+              <h3 className="text-2xl font-bold text-[#111111] mb-4">Real-Time Streams</h3>
+              <p className="text-gray-600 leading-relaxed mb-6">
+                All agent executions, payments, and settlements are indexed as they occur. Query historical data or subscribe to live event streams via GraphQL subscriptions.
               </p>
-              <div className="flex items-center gap-4 pt-4">
-                <Avatar className="h-12 w-12 border-2 border-white/20">
-                  <AvatarFallback className="bg-white/10 text-white">FO</AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-bold">Sarah Jenkins</p>
-                  <p className="text-sm text-white/60">Lead Developer</p>
+              <div className="space-y-2 text-sm text-gray-500">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-green-600" />
+                  <span>Sub-second indexing latency</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-green-600" />
+                  <span>GraphQL subscriptions</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-green-600" />
+                  <span>WebSocket event feeds</span>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <div className="flex flex-col justify-center space-y-8 pl-8 border-l border-gray-100">
-            <p className="text-2xl font-medium text-gray-800 italic">
-              "Relay Trade aggregates liquidity like magic. We get the best execution for our hedging agents every single time."
-            </p>
-            <div className="flex items-center gap-4">
-              <Avatar className="h-12 w-12">
-                <AvatarFallback className="bg-black text-white">RT</AvatarFallback>
-              </Avatar>
-              <div>
-                <p className="font-bold text-[#111111]">Alex Thompson</p>
-                <p className="text-sm text-gray-500">DeFi Strategist</p>
+          <Card className="border-2 border-[#111111] rounded-[2rem] shadow-2xl scale-105">
+            <CardContent className="p-8">
+              <div className="w-12 h-12 bg-[#111111] rounded-xl flex items-center justify-center mb-6">
+                <span className="text-2xl font-bold text-white">#</span>
               </div>
-            </div>
+              <h3 className="text-2xl font-bold text-[#111111] mb-4">Queryable Activity</h3>
+              <p className="text-gray-600 leading-relaxed mb-6">
+                Agents, sessions, payments, and outcomes are first-class queryable entities. Filter by time range, agent ID, settlement status, or reputation threshold.
+              </p>
+              <div className="space-y-2 text-sm text-gray-500">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-green-600" />
+                  <span>Full-text search</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-green-600" />
+                  <span>Time-series aggregation</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-green-600" />
+                  <span>Reputation-based filtering</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-2 border-gray-100 rounded-[2rem] shadow-sm">
+            <CardContent className="p-8">
+              <div className="w-12 h-12 bg-[#E6F5F6] rounded-xl flex items-center justify-center mb-6">
+                <span className="text-2xl font-bold text-[#2A4425]">✓</span>
+              </div>
+              <h3 className="text-2xl font-bold text-[#111111] mb-4">Verifiable Outcomes</h3>
+              <p className="text-gray-600 leading-relaxed mb-6">
+                Every indexed execution includes on-chain settlement proof, latency measurements, and outcome status. No subjective claims. Only verifiable data.
+              </p>
+              <div className="space-y-2 text-sm text-gray-500">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-green-600" />
+                  <span>On-chain settlement links</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-green-600" />
+                  <span>Latency tracking</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-green-600" />
+                  <span>Success/failure proofs</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="mt-16 text-center">
+          <p className="text-gray-500 text-sm mb-6">Explore indexed agent activity</p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Button
+              variant="outline"
+              className="rounded-full border-gray-200 text-[#111111] hover:bg-gray-50 px-8 py-6 text-base font-semibold"
+              onClick={() => window.location.href = '/explorer'}
+            >
+              Intelligence Dashboard
+            </Button>
+            <Button
+              variant="outline"
+              className="rounded-full border-gray-200 text-[#111111] hover:bg-gray-50 px-8 py-6 text-base font-semibold"
+              onClick={() => window.location.href = '/docs/api/graphql'}
+            >
+              GraphQL API Docs
+            </Button>
           </div>
         </div>
       </div>
     </section>
   )
 }
+
+
+function WhoItsForSection() {
+  return (
+    <section className="min-h-[100dvh] md:snap-start bg-gradient-to-b from-white via-gray-50 to-white w-full flex flex-col justify-center px-6 pt-28 pb-12">
+      <div className="container mx-auto px-6 max-w-7xl">
+        <div className="text-center mb-20">
+          <h2 className="text-4xl md:text-6xl font-bold text-[#111111] mb-6 tracking-tight">Who It Is For</h2>
+          <p className="text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
+            RelayCore is infrastructure. It is built for teams building autonomous agent systems on Cronos.
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-12 max-w-6xl mx-auto">
+          <div>
+            <h3 className="text-2xl font-bold text-[#111111] mb-6">You Should Use RelayCore If:</h3>
+            <div className="space-y-6">
+              <div className="flex items-start gap-4">
+                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                  <CheckCircle2 size={18} className="text-green-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-[#111111] mb-1">You are building agent-to-agent payment systems</p>
+                  <p className="text-gray-600 text-sm">You need x402-native execution, session-based budgets, or escrow-backed settlements.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                  <CheckCircle2 size={18} className="text-green-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-[#111111] mb-1">You need deterministic reputation for autonomous agents</p>
+                  <p className="text-gray-600 text-sm">You require on-chain proof of execution outcomes and verifiable trust scores.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                  <CheckCircle2 size={18} className="text-green-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-[#111111] mb-1">You are integrating agents with MCP-compatible tooling</p>
+                  <p className="text-gray-600 text-sm">You want 53 pre-built tools for payments, discovery, reputation, and trading.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                  <CheckCircle2 size={18} className="text-green-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-[#111111] mb-1">You need real-time indexed intelligence on agent activity</p>
+                  <p className="text-gray-600 text-sm">You require queryable execution history, payment streams, and settlement proofs.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-2xl font-bold text-[#111111] mb-6">You Should Not Use RelayCore If:</h3>
+            <div className="space-y-6">
+              <div className="flex items-start gap-4">
+                <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                  <X size={18} className="text-red-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-[#111111] mb-1">You are building a consumer wallet or marketplace app</p>
+                  <p className="text-gray-600 text-sm">RelayCore is not a white-label SaaS. It is infrastructure for agent systems.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                  <X size={18} className="text-red-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-[#111111] mb-1">You need a no-code solution or drag-and-drop builder</p>
+                  <p className="text-gray-600 text-sm">RelayCore requires technical integration via GraphQL, REST, or MCP.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                  <X size={18} className="text-red-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-[#111111] mb-1">You are not deploying on Cronos</p>
+                  <p className="text-gray-600 text-sm">RelayCore is Cronos-native. Cross-chain support is not planned.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                  <X size={18} className="text-red-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-[#111111] mb-1">You expect managed hosting or white-glove onboarding</p>
+                  <p className="text-gray-600 text-sm">RelayCore is self-service infrastructure. Documentation and playground are provided.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-20 text-center">
+          <p className="text-gray-500 text-sm mb-6">Ready to build?</p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Button
+              className="bg-[#111111] text-white hover:bg-black rounded-full px-10 py-6 text-lg font-semibold shadow-xl shadow-black/10"
+              onClick={() => window.location.href = '/docs'}
+            >
+              Read Documentation
+            </Button>
+            <Button
+              variant="outline"
+              className="rounded-full border-gray-200 text-[#111111] hover:bg-gray-50 px-10 py-6 text-lg font-semibold"
+              onClick={() => window.location.href = '/playground'}
+            >
+              Try Playground
+            </Button>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 
 function Footer() {
   return (
@@ -787,32 +938,44 @@ function Footer() {
       <div className="container mx-auto px-6 max-w-7xl">
         <div className="flex flex-col md:flex-row justify-between items-start gap-16">
           <div className="max-w-md space-y-8">
-            <h3 className="text-3xl font-bold">Relay Core</h3>
+            <h3 className="text-3xl font-bold">RelayCore</h3>
             <p className="text-white/70 text-lg leading-relaxed">
-              The payment infrastructure for autonomous agents on Cronos. Get started with trust-scored service discovery and x402 payments today.
+              Infrastructure for agentic finance on Cronos. x402-native payment execution, deterministic reputation, and real-time indexed intelligence.
             </p>
-            <Button className="bg-white text-[#2A4425] hover:bg-gray-100 rounded-full px-8 py-6 text-lg font-bold shadow-lg">
-              Get Started Now
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Button
+                className="bg-white text-[#2A4425] hover:bg-gray-100 rounded-full px-8 py-6 text-base font-bold shadow-lg"
+                onClick={() => window.location.href = '/docs'}
+              >
+                Documentation
+              </Button>
+              <Button
+                
+                className="bg-white text-[#2A4425] hover:bg-gray-100 shadow-lg rounded-full px-8 py-6 text-base font-semibold"
+                onClick={() => window.location.href = '/playground'}
+              >
+                Playground
+              </Button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-12 md:gap-16">
             <div className="space-y-6">
-              <h4 className="font-bold text-lg">Product</h4>
+              <h4 className="font-bold text-lg">Infrastructure</h4>
               <ul className="space-y-4 text-white/70">
-                <li><a href="#features" className="hover:text-white transition-colors">Features</a></li>
-                <li><a href="#how-it-works" className="hover:text-white transition-colors">How It Works</a></li>
-                <li><a href="#pricing" className="hover:text-white transition-colors">Pricing</a></li>
-                <li><Link to="/marketplace" className="hover:text-white transition-colors">Marketplace</Link></li>
-                <li><Link to="/dashboard/trade" className="hover:text-white transition-colors">Relay Trade</Link></li>
+                <li><a href="#primitives" className="hover:text-white transition-colors">Primitives</a></li>
+                <li><a href="#protocol-flow" className="hover:text-white transition-colors">Protocol Flow</a></li>
+                <li><a href="#intelligence" className="hover:text-white transition-colors">Intelligence</a></li>
+                <li><Link to="/explorer" className="hover:text-white transition-colors">Explorer</Link></li>
               </ul>
             </div>
             <div className="space-y-6">
               <h4 className="font-bold text-lg">Resources</h4>
               <ul className="space-y-4 text-white/70">
                 <li><Link to="/docs" className="hover:text-white transition-colors">Documentation</Link></li>
-                <li><a href="https://github.com/relay-core" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">GitHub</a></li>
-                <li><Link to="/docs/api/rest" className="hover:text-white transition-colors">API Reference</Link></li>
+                <li><Link to="/playground" className="hover:text-white transition-colors">Playground</Link></li>
+                <li><a href="https://github.com/winsznx/relaycore" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">GitHub</a></li>
+                <li><Link to="/docs/api/graphql" className="hover:text-white transition-colors">API Reference</Link></li>
               </ul>
             </div>
             <div className="space-y-6">
@@ -867,11 +1030,11 @@ function LandingPage() {
               <button onClick={() => setIsMenuOpen(false)}><X /></button>
             </div>
             <div className="space-y-6 flex flex-col">
-              <button className="text-2xl font-bold text-left" onClick={() => { setIsMenuOpen(false); document.getElementById('features')?.scrollIntoView() }}>Features</button>
-              <button className="text-2xl font-bold text-left" onClick={() => { setIsMenuOpen(false); document.getElementById('how-it-works')?.scrollIntoView() }}>How it Works</button>
-              <button className="text-2xl font-bold text-left" onClick={() => { setIsMenuOpen(false); document.getElementById('pricing')?.scrollIntoView() }}>Pricing</button>
+              <button className="text-2xl font-bold text-left" onClick={() => { setIsMenuOpen(false); document.getElementById('primitives')?.scrollIntoView() }}>Primitives</button>
+              <button className="text-2xl font-bold text-left" onClick={() => { setIsMenuOpen(false); document.getElementById('protocol-flow')?.scrollIntoView() }}>Protocol Flow</button>
+              <button className="text-2xl font-bold text-left" onClick={() => { setIsMenuOpen(false); document.getElementById('intelligence')?.scrollIntoView() }}>Intelligence</button>
               <button className="text-2xl font-bold text-left" onClick={() => { setIsMenuOpen(false); document.getElementById('docs')?.scrollIntoView() }}>Docs</button>
-              <Button className="w-full bg-[#111111] text-white h-12 text-lg mt-8" onClick={() => navigate('/app')}>Launch App</Button>
+              <Button className="w-full bg-[#111111] text-white h-12 text-lg mt-8" onClick={() => navigate('/docs')}>Documentation</Button>
             </div>
           </motion.div>
         )}
@@ -881,9 +1044,9 @@ function LandingPage() {
         <HeroSection />
         <HowItWorksSection />
         <Features />
-        <PricingSection />
-        <FAQSection /> {/* FAQ Added */}
-        <Testimonials />
+        <IntelligenceSection />
+        <FAQSection />
+        <WhoItsForSection />
         <Footer />
       </main>
     </div>
@@ -905,6 +1068,8 @@ import ServiceDetailPage from '@/pages/ServiceDetailPage'
 import Marketplace from '@/pages/Marketplace'
 import ACPSSessions from '@/pages/ACPSSessions'
 import RWAServices from '@/pages/RWAServices'
+import Explorer from '@/pages/IntelligenceDashboard'
+import Playground from '@/pages/Playground'
 
 export default function App() {
   return (
@@ -958,6 +1123,18 @@ export default function App() {
       {/* Marketplace Routes (Public) */}
       <Route path="/marketplace" element={<Marketplace />} />
       <Route path="/marketplace/services/:id" element={<ServiceDetailPage />} />
+      {/* Explorer Routes (Public) */}
+      <Route path="/explorer" element={<Explorer />} />
+      <Route path="/explorer/sessions" element={<Explorer />} />
+      <Route path="/explorer/session/:sessionId" element={<Explorer />} />
+      <Route path="/explorer/transactions" element={<Explorer />} />
+      <Route path="/explorer/agents" element={<Explorer />} />
+      <Route path="/explorer/payments" element={<Explorer />} />
+      <Route path="/explorer/system" element={<Explorer />} />
+      {/* Playground Route (Public) */}
+      <Route path="/playground" element={<Playground />} />
+      {/* Legacy observability redirect to explorer */}
+      <Route path="/observability" element={<Navigate to="/explorer" replace />} />
       {/* 404 Catch-all route */}
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
