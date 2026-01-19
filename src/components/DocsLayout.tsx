@@ -13,7 +13,7 @@ import {
     MessageCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import logo from '@/assets/logo.png';
+import logo from '@/assets/relay-logo.svg';
 
 interface NavSection {
     title: string;
@@ -103,13 +103,10 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
                         <div className="flex items-center gap-8">
                             <button
                                 onClick={() => navigate('/')}
-                                className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+                                className="flex flex-col items-start gap-0.5 hover:opacity-80 transition-opacity"
                             >
-                                <img src={logo} alt="Relay Core" className="h-8 w-8 rounded-lg" />
-                                <div className="hidden sm:block">
-                                    <div className="text-base font-semibold text-gray-900">Relay Core</div>
-                                    <div className="text-xs text-gray-500">Documentation</div>
-                                </div>
+                                <img src={logo} alt="Relay Core" className="h-6" />
+                                <div className="text-[10px] font-medium text-gray-500 uppercase tracking-widest ml-0.5">Documentation</div>
                             </button>
                         </div>
 
