@@ -10,7 +10,7 @@ import {
     X,
     ChevronRight,
     Github,
-    MessageCircle
+    Send
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import logo from '@/assets/relay-logo.svg';
@@ -122,13 +122,13 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
                                 <span>GitHub</span>
                             </a>
                             <a
-                                href="https://discord.gg/relaycore"
+                                href="https://t.me/relay_core"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-2"
                             >
-                                <MessageCircle className="w-4 h-4" />
-                                <span>Discord</span>
+                                <Send className="w-4 h-4" />
+                                <span>Telegram</span>
                             </a>
                         </nav>
 

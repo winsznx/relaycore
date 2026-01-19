@@ -982,8 +982,7 @@ function Footer() {
               <h4 className="font-bold text-lg">Community</h4>
               <ul className="space-y-4 text-white/70">
                 <li><a href="https://x.com/relaycore_" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">X (Twitter)</a></li>
-                <li><a href="https://discord.gg/relaycore" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Discord</a></li>
-                <li><a href="https://t.me/relaycore" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Telegram</a></li>
+                <li><a href="https://t.me/relay_core" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Telegram</a></li>
               </ul>
             </div>
             <div className="space-y-6">
