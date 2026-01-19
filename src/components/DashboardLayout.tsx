@@ -15,7 +15,7 @@ const NAV_ITEMS = [
     { icon: Users, label: 'My Agents', path: '/dashboard/agents' },
     { icon: BarChart3, label: 'Transactions', path: '/dashboard/transactions' },
     { icon: ShieldCheck, label: 'Reputation', path: '/dashboard/reputation' },
-    { icon: Zap, label: 'ACPS Sessions', path: '/dashboard/acps' },
+    { icon: Zap, label: 'x402 Sessions', path: '/dashboard/acps' },
     { icon: Building2, label: 'RWA Settlement', path: '/dashboard/rwa' },
     { icon: Settings, label: 'Configuration', path: '/dashboard/settings' },
 ]

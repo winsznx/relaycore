@@ -1173,6 +1173,7 @@ export function DashboardSettings() {
             if (response.ok) {
                 toast.success('Profile updated', 'Your profile has been saved.');
                 setEditingProfile(false);
+                await loadProfile();
             } else {
                 throw new Error('Failed to save');
             }
@@ -1226,23 +1227,24 @@ export function DashboardSettings() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     walletAddress: address,
-                    name: `Key ${apiKeys.length + 1}`,
                 }),
             });
 
+            const data = await response.json();
+
             if (response.ok) {
-                const data = await response.json();
-                // Show the key only once
                 toast.success(
                     'API Key Generated',
                     `Your new key: ${data.key}\n\nCopy it now - you won't see it again!`
                 );
-                setApiKeys(prev => [...prev, {
+                setApiKeys([{
                     id: data.id,
                     name: data.name,
-                    created: new Date().toISOString(),
+                    created: data.created_at,
                     lastUsed: 'Never',
                 }]);
+            } else {
+                toast.error('Generation failed', data.error || 'Please try again.');
             }
         } catch (error) {
             toast.error('Failed to generate key', 'Please try again.');
@@ -1351,7 +1353,7 @@ export function DashboardSettings() {
                         </div>
                     ) : (
                         <div className="grid gap-4">
-                            <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50">
+                            <div className="flex items-center justify-between p-4 rounded-lg bg-white border border-gray-100">
                                 <div className="flex items-center gap-3">
                                     <User className="h-5 w-5 text-gray-500" />
                                     <div>
@@ -1360,7 +1362,7 @@ export function DashboardSettings() {
                                     </div>
                                 </div>
                             </div>
-                            <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50">
+                            <div className="flex items-center justify-between p-4 rounded-lg bg-white border border-gray-100">
                                 <div className="flex items-center gap-3">
                                     <Bell className="h-5 w-5 text-gray-500" />
                                     <div>
@@ -1369,7 +1371,7 @@ export function DashboardSettings() {
                                     </div>
                                 </div>
                             </div>
-                            <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50">
+                            <div className="flex items-center justify-between p-4 rounded-lg bg-white border border-gray-100">
                                 <div className="flex items-center gap-3">
                                     <Wallet className="h-5 w-5 text-gray-500" />
                                     <div>
@@ -1456,7 +1458,7 @@ export function DashboardSettings() {
                             </div>
                         </div>
                     ) : (
-                        <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50">
+                        <div className="flex items-center justify-between p-4 rounded-lg bg-white border border-gray-100">
                             <div className="flex items-center gap-3">
                                 <Bell className="h-5 w-5 text-gray-500" />
                                 <div>
@@ -1500,7 +1502,7 @@ export function DashboardSettings() {
                             {apiKeys.map((key) => (
                                 <div
                                     key={key.id}
-                                    className="flex items-center justify-between p-4 rounded-lg bg-gray-50"
+                                    className="flex items-center justify-between p-4 rounded-lg bg-white border border-gray-100"
                                 >
                                     <div>
                                         <p className="font-medium text-gray-900">{key.name}</p>
@@ -1808,7 +1810,8 @@ function TradeRow({ trade }: { trade: any }) {
 }
 
 function TransactionRow({ trade }: { trade: any }) {
-    const isSuccess = trade.status === 'closed' || trade.status === 'open';
+    const isPayment = trade.type === 'payment';
+    const isSuccess = trade.status === 'closed' || trade.status === 'open' || trade.status === 'settled' || trade.status === 'success';
 
     return (
         <div className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
@@ -1819,16 +1822,27 @@ function TransactionRow({ trade }: { trade: any }) {
                 </div>
                 <div>
                     <p className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                        {trade.side.toUpperCase()} {trade.pair}
+                        {isPayment ? (
+                            <span className="flex items-center gap-2">
+                                <DollarSign className="h-4 w-4" />
+                                {trade.purpose || 'Payment'}
+                            </span>
+                        ) : (
+                            `${trade.side.toUpperCase()} ${trade.pair}`
+                        )}
                     </p>
                     <p className="text-xs text-gray-500">
-                        {trade.tx_hash_open?.slice(0, 10)}... • {new Date(trade.created_at).toLocaleString()}
+                        {trade.tx_hash?.slice(0, 10) || trade.tx_hash_open?.slice(0, 10)}... • {new Date(trade.created_at).toLocaleString()}
                     </p>
                 </div>
             </div>
             <div className="text-right">
-                <p className="font-mono font-bold text-gray-900 dark:text-gray-100">${trade.size_usd}</p>
-                <p className="text-xs text-gray-400">{trade.dex_venues?.name || 'Unknown venue'}</p>
+                <p className="font-mono font-bold text-gray-900 dark:text-gray-100">
+                    {isPayment ? `${trade.amount} USDC` : `$${trade.size_usd}`}
+                </p>
+                <p className="text-xs text-gray-400">
+                    {isPayment ? trade.to_address?.slice(0, 10) + '...' : (trade.dex_venues?.name || 'Unknown venue')}
+                </p>
             </div>
         </div>
     );
