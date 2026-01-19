@@ -11,7 +11,8 @@ import featurePayment from '@/assets/feature-payment.png'
 import featureReputation from '@/assets/feature-reputation.png'
 import featureDiscovery from '@/assets/feature-discovery.png'
 import { FAQSection } from '@/components/FAQ'
-import logo from '@/assets/logo.png'
+import logo from '@/assets/relay-logo.svg'
+import logoWhite from '@/assets/relay-white.svg'
 import cronosLogo from '@/assets/partners/cronos.svg'
 import cryptoComLogo from '@/assets/partners/crypto-com.svg'
 import zauthLogo from '@/assets/partners/zauth.png'
@@ -91,8 +92,7 @@ function Navbar({ onOpenMenu }: { onOpenMenu: () => void }) {
         "border border-gray-200 shadow-lg shadow-black/5"
       )}>
         <Link to="/" className="flex items-center gap-2.5 cursor-pointer">
-          <img src={logo} alt="Relay Core" className="h-9 w-9 rounded-xl" />
-          <span className="text-xl font-bold tracking-tight text-[#111111]">Relay Core</span>
+          <img src={logo} alt="Relay Core" className="h-6" />
         </Link>
 
         <div className="hidden md:flex items-center gap-1">
@@ -938,7 +938,7 @@ function Footer() {
       <div className="container mx-auto px-6 max-w-7xl">
         <div className="flex flex-col md:flex-row justify-between items-start gap-16">
           <div className="max-w-md space-y-8">
-            <h3 className="text-3xl font-bold">RelayCore</h3>
+            <img src={logoWhite} alt="Relay Core" className="h-9" />
             <p className="text-white/70 text-lg leading-relaxed">
               Infrastructure for agentic finance on Cronos. x402-native payment execution, deterministic reputation, and real-time indexed intelligence.
             </p>
@@ -950,7 +950,7 @@ function Footer() {
                 Documentation
               </Button>
               <Button
-                
+
                 className="bg-white text-[#2A4425] hover:bg-gray-100 shadow-lg rounded-full px-8 py-6 text-base font-semibold"
                 onClick={() => window.location.href = '/playground'}
               >

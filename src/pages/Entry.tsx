@@ -4,7 +4,7 @@ import { ArrowRight, Wallet, Shield, Zap, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useAppKit, useAppKitAccount } from '@/lib/web3'
-import logo from '@/assets/logo.png'
+import logo from '@/assets/relay-logo.svg'
 import { useEffect } from 'react'
 
 export function EntryPage() {
@@ -24,8 +24,7 @@ export function EntryPage() {
             <div className="lg:w-1/2 bg-[#0a0a0a] text-white p-8 lg:p-16 flex flex-col min-h-[50vh] lg:min-h-screen">
                 {/* Logo */}
                 <Link to="/" className="flex items-center gap-3 mb-auto">
-                    <img src={logo} alt="Relay Core" className="h-10 w-10 rounded-xl" />
-                    <span className="text-2xl font-bold tracking-tight">Relay Core</span>
+                    <img src={logo} alt="Relay Core" className="h-10" />
                 </Link>
 
                 {/* Tagline */}
