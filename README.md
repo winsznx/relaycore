@@ -1,22 +1,30 @@
 # Relay Core
 
+![Relay Core](src/assets/relaycore.png)
+
 Production-grade payment infrastructure for autonomous AI agents on Cronos EVM.
 
 Relay Core provides the discovery, reputation, and settlement layer that enables AI agents to interact, pay each other, and build trust through verifiable on-chain outcomes.
 
 ## Core Capabilities
 
-### Agent-Controlled Payment Sessions (ACPS)
-Session-based escrow that allows agents to execute autonomously within pre-approved spending limits. Agents operate without per-transaction wallet prompts while maintaining full custody guarantees through on-chain escrow.
+### x402 Payment Sessions
+Gasless session-based payments using the x402 protocol. Users pay Relay once via x402, Relay holds the budget and pays agents on the user's behalf. All payments are gasless (no gas fees), with strict budget enforcement and complete audit trails.
 
 ### x402 Payments
 Native integration with the x402 protocol for HTTP-based payments. Services return 402 Payment Required, agents pay via the Facilitator SDK, and execution resumes automatically.
 
-### Real-World Asset Settlement (RWA)
-Off-chain service verification with on-chain payment guarantees. Providers register services with SLA terms, agents request execution, and payments are released or refunded based on proof verification.
+### Real-World Asset State Machines (RWA)
+Deterministic state management for physical assets with on-chain verification. Supports multi-agent coordination where different agents (verifiers, auditors, settlers) manage specific state transitions, all enforced by x402 payments.
 
 ### Reputation and Discovery
 On-chain reputation registry with latency tracking, success rates, and peer feedback. Service marketplace with category-based discovery and quality scoring.
+
+### Relay SDK
+Production-ready TypeScript SDK for building agents and integrating services.
+- **RelayAgent:** High-level agent framework for discovery and execution.
+- **RelayService:** Service provider framework with monetization built-in.
+- **RelayRWASDK:** Manage RWA lifecycles with state machine enforcement.
 
 ### PerpAI Aggregator
 AI-powered perpetual DEX aggregator that routes trades through the best available liquidity using Pyth Network price feeds.
@@ -29,6 +37,7 @@ AI-powered perpetual DEX aggregator that routes trades through the best availabl
 | Backend | Supabase (PostgreSQL, Edge Functions, RLS) |
 | Blockchain | Cronos EVM (Testnet and Mainnet) |
 | Payments | x402 Facilitator SDK (EIP-3009) |
+| SDK | TypeScript (Agent, Service, RWA) |
 | Oracles | Pyth Network |
 | Trading | Moonlander Perpetual DEX |
 | Agent Interface | Model Context Protocol (MCP) |
@@ -45,7 +54,7 @@ AI-powered perpetual DEX aggregator that routes trades through the best availabl
 
 ## MCP Server
 
-53 tools available for agent integration:
+60 tools available for agent integration:
 
 | Category | Count | Examples |
 |----------|-------|----------|
@@ -54,7 +63,7 @@ AI-powered perpetual DEX aggregator that routes trades through the best availabl
 | Reputation | 6 | get_score, submit_feedback, get_feedback |
 | Agents | 7 | list, register, update, deactivate |
 | ACPS | 7 | create_session, can_execute, release, refund |
-| RWA | 4 | services, register, execute, settle |
+| RWA | 11 | state_create, state_transition, list_all, verify |
 | Trading | 9 | get_price, get_quote, execute_trade |
 | Analytics | 8 | provider_stats, market_data, health |
 
@@ -99,6 +108,7 @@ Or run migrations manually in order:
 2. supabase/migrations/002_complete_schema.sql
 3. supabase/migrations/012_escrow_sessions.sql
 4. supabase/migrations/013_rwa_settlement.sql
+5. supabase/migrations/20260119_rwa_state_machine.sql
 
 ### Development
 
@@ -151,6 +161,7 @@ relaycore/
   src/
     components/        # React components
     pages/             # Page components
+    sdk/               # Relay SDK (Agent, Service, RWA)
     services/          # Business logic
       escrow/          # ACPS escrow agent
       rwa/             # RWA settlement agent
@@ -160,22 +171,25 @@ relaycore/
     migrations/        # Database migrations
 ```
 
-## ACPS Flow
+## x402 Session Flow
 
-1. Agent requests session creation
-2. System returns 402 Payment Required with escrow details
-3. User deposits USDC into escrow contract
-4. Agents execute autonomously within session limits
-5. Payments released on success, refunded on failure
-6. Session closes and returns remaining balance
+1. User creates session with budget and duration
+2. System generates x402 payment request
+3. User pays Relay via x402 (gasless)
+4. Session activated with budget available
+5. User hires agents - Relay pays from session budget (gasless x402)
+6. Session tracks spending and enforces limits
+7. Session expires or closes - remaining balance refunded via x402
 
-## RWA Settlement Flow
+## RWA State Machine Flow
 
-1. Provider registers service with SLA terms
-2. Agent requests execution with escrow-backed payment
-3. Provider delivers proof of execution
-4. System verifies proof against SLA (latency, format, signature)
-5. Payment released if SLA met, refunded if not
+1. **Create:** Asset registered with initial metadata.
+2. **Verify:** Auditor agent validates off-chain existence and updates state.
+3. **Escrow:** Payment or title locked in escrow contract.
+4. **Execution:** Service provider performs physical work (shipping, etc).
+5. **Settlement:** Final proof verified, funds released via x402.
+
+Every state transition requires a specific agent role and an x402 payment, ensuring the entire lifecycle is funded and verified on-chain.
 
 ## Security
 
