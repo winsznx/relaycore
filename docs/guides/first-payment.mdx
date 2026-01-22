@@ -1,0 +1,64 @@
+---
+title: Your First x402 Payment
+description: Execute your first x402 payment in 5 minutes
+---
+
+## Prerequisites
+
+<Check>Cronos Testnet wallet connected</Check>
+<Check>USDC balance (get from faucet)</Check>
+<Check>Relay Core running locally</Check>
+
+## Steps
+
+<Steps>
+  <Step title="Navigate to Trade Page">
+    Go to http://localhost:5173/dashboard/trade
+  </Step>
+
+  <Step title="Select Direct Payment">
+    Choose "Direct Payment" option (not session)
+  </Step>
+
+  <Step title="Click Get Quote">
+    Click the "Get Quote" button
+  </Step>
+
+  <Step title="Sign Authorization">
+    Your wallet will prompt you to sign an EIP-3009 authorization.
+    This does NOT execute a transaction, just creates a signature.
+  </Step>
+
+  <Step title="Payment Settles">
+    The Facilitator SDK verifies your signature and settles the USDC transfer on-chain.
+    You'll see a transaction hash in the response.
+  </Step>
+
+  <Step title="View Quote">
+    Quote data returns with entry price, liquidation price, and funding rates.
+  </Step>
+</Steps>
+
+<Check>Payment complete! You've executed your first x402 transaction.</Check>
+
+## What Happened?
+
+1. Frontend called `POST /api/perpai/quote`
+2. Server returned `402 Payment Required` with payment details
+3. You signed EIP-3009 authorization (no gas fee)
+4. Frontend submitted to `POST /api/pay`
+5. Facilitator SDK verified signature and settled USDC transfer
+6. Payment recorded in database
+7. Frontend retried quote request with payment ID
+8. Server returned quote data
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create Session" icon="wallet" href="/guides/create-session">
+    Set up gasless payments
+  </Card>
+  <Card title="x402 Protocol" icon="bolt" href="/essentials/x402-protocol">
+    Learn the technical details
+  </Card>
+</CardGroup>

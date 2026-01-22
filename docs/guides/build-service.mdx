@@ -1,0 +1,20 @@
+---
+title: Build a Service
+description: Create and expose x402-protected services
+---
+
+## Define Service
+
+```typescript
+const myService = defineService({
+  name: "price-feed",
+  category: "data.prices",
+  price: "0.01"
+});
+```
+
+## Register Service
+
+```typescript
+await provider.register(myService);
+```

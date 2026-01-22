@@ -1,0 +1,27 @@
+---
+title: Create a Session
+description: Set up gasless payment sessions
+---
+
+## Create Session
+
+```typescript
+const { sessionId, paymentRequest } = await agent.createSession({
+  maxSpend: 10,
+  durationHours: 24
+});
+```
+
+## Activate Session
+
+Transfer USDC to `paymentRequest.payTo`, then:
+
+```typescript
+const activation = await agent.activateSession(sessionId, txHash, amount);
+```
+
+## Use Session
+
+```typescript
+const result = await agent.execute(service, input, { sessionId });
+```
