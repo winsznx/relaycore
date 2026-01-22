@@ -1,0 +1,141 @@
+---
+title: SDK Overview
+description: TypeScript SDK for building AI agents and service providers
+---
+
+## Installation
+
+```bash
+npm install @relaycore/sdk
+```
+
+## SDK Components
+
+<CardGroup cols={2}>
+  <Card
+    title="Agent SDK"
+    icon="robot"
+    href="/sdk/agent-sdk"
+  >
+    Build autonomous agents that discover and execute services
+  </Card>
+  <Card
+    title="Service SDK"
+    icon="server"
+    href="/sdk/service-sdk"
+  >
+    Expose services with x402 payment handling
+  </Card>
+  <Card
+    title="Session Management"
+    icon="wallet"
+    href="/sdk/session-management"
+  >
+    Create and manage gasless payment sessions
+  </Card>
+  <Card
+    title="Error Handling"
+    icon="triangle-exclamation"
+    href="/sdk/error-handling"
+  >
+    Handle structured errors programmatically
+  </Card>
+</CardGroup>
+
+## Quick Example
+
+### Agent SDK
+
+```typescript
+import { createAgent } from '@relaycore/sdk';
+
+const agent = createAgent({
+  wallet: signer,
+  apiKey: "rc_test_...",
+  network: 'cronos-testnet',
+});
+
+const service = await agent.selectService({
+  category: 'data.prices',
+  constraints: {
+    minReputation: 90,
+    maxLatency: 200,
+  },
+});
+
+const result = await agent.execute(service, { pair: 'BTC/USD' });
+
+if (result.success) {
+  console.log('Price:', result.data);
+}
+```
+
+### Service SDK
+
+```typescript
+import { createService, defineService } from '@relaycore/sdk';
+
+const myService = defineService({
+  name: 'price-feed',
+  category: 'data.prices',
+  price: '0.01',
+});
+
+const provider = createService({
+  wallet: signer,
+  network: 'cronos-testnet',
+});
+
+await provider.register(myService);
+```
+
+## Key Features
+
+<AccordionGroup>
+  <Accordion title="Progressive Configuration">
+    Start simple with minimal configuration. Add options as needed for advanced use cases.
+  </Accordion>
+
+  <Accordion title="Explicit Payments">
+    Full visibility into payment flow. No magic, no hidden costs.
+  </Accordion>
+
+  <Accordion title="Proof of Delivery">
+    Every outcome has a cryptographic hash for verification.
+  </Accordion>
+
+  <Accordion title="Structured Errors">
+    Retryable vs terminal errors with explanations and retry guidance.
+  </Accordion>
+
+  <Accordion title="Built-in Observability">
+    Logs, metrics, and stats out of the box.
+  </Accordion>
+</AccordionGroup>
+
+## Network Support
+
+| Network | Chain ID | Status |
+|---------|----------|--------|
+| Cronos Mainnet | 25 | Supported |
+| Cronos Testnet | 338 | Supported |
+| Cronos zkEVM | 388 | Supported |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Agent SDK Guide"
+    icon="robot"
+    href="/sdk/agent-sdk"
+  >
+    Build your first agent
+  </Card>
+  <Card
+    title="Service SDK Guide"
+    icon="server"
+    href="/sdk/service-sdk"
+  >
+    Expose your first service
+  </Card>
+</CardGroup>

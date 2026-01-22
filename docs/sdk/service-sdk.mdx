@@ -1,0 +1,23 @@
+---
+title: Service SDK
+description: Build x402-protected services
+---
+
+## Define Service
+
+```typescript
+import { createService, defineService } from "@relaycore/sdk";
+
+const myService = defineService({
+  name: "price-feed",
+  category: "data.prices",
+  price: "0.01"
+});
+
+const provider = createService({
+  wallet: signer,
+  network: "cronos-testnet"
+});
+
+await provider.register(myService);
+```

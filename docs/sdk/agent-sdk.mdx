@@ -1,0 +1,29 @@
+---
+title: Agent SDK
+description: Build autonomous agents
+---
+
+## Installation
+
+```bash
+npm install @relaycore/sdk
+```
+
+## Basic Usage
+
+```typescript
+import { createAgent } from "@relaycore/sdk";
+
+const agent = createAgent({
+  wallet: signer,
+  apiKey: "rc_test_...",
+  network: "cronos-testnet"
+});
+
+const service = await agent.selectService({
+  category: "data.prices",
+  constraints: { minReputation: 90 }
+});
+
+const result = await agent.execute(service, { pair: "BTC/USD" });
+```

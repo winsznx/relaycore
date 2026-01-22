@@ -1,0 +1,20 @@
+---
+title: Session Management
+description: Manage gasless payment sessions
+---
+
+## Create Session
+
+```typescript
+const { sessionId, paymentRequest } = await agent.createSession({
+  maxSpend: 10,
+  durationHours: 24
+});
+```
+
+## Query Session
+
+```typescript
+const session = await agent.getSession(sessionId);
+console.log(\`Remaining: \${session.remaining} USDC\`);
+```

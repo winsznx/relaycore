@@ -1,0 +1,21 @@
+---
+title: Error Handling
+description: Handle structured errors
+---
+
+## Error Codes
+
+```typescript
+const result = await agent.execute(service, input);
+
+if (!result.success) {
+  switch (result.error?.code) {
+    case "SERVICE_NOT_FOUND":
+      console.log("Service not found");
+      break;
+    case "PAYMENT_FAILED":
+      console.log("Payment failed");
+      break;
+  }
+}
+```
