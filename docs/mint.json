@@ -18,7 +18,7 @@
     "topbarLinks": [
         {
             "name": "Dashboard",
-            "url": "https://relaycore.xyz"
+            "url": "https://relaycore.xyz/app"
         },
         {
             "name": "GitHub",
@@ -27,7 +27,7 @@
     ],
     "topbarCtaButton": {
         "name": "Get Started",
-        "url": "https://relaycore.xyz/dashboard"
+        "url": "https://relaycore.xyz/app"
     },
     "tabs": [
         {
@@ -97,7 +97,6 @@
             "group": "MCP Server",
             "pages": [
                 "mcp/overview",
-                "mcp/installation",
                 "mcp/tools-reference",
                 "mcp/authentication"
             ]
@@ -130,7 +129,7 @@
     ],
     "footerSocials": {
         "github": "https://github.com/winsznx/relaycore",
-        "twitter": "https://twitter.com/relaycore"
+        "twitter": "https://twitter.com/relaycore_"
     },
     "analytics": {
         "ga4": {
