@@ -1,0 +1,221 @@
+---
+title: x402 Payment Protocol
+description: HTTP 402 payment flow with EIP-3009 authorization and Facilitator settlement
+---
+
+## Overview
+
+The x402 protocol enables HTTP-based payments where services return `402 Payment Required` responses, clients sign EIP-3009 authorizations, and the Facilitator SDK settles payments on-chain.
+
+## Payment Flow
+
+<Steps>
+  <Step title="Client Requests Resource">
+    ```bash
+    GET /api/perpai/quote HTTP/1.1
+    Host: api.relaycore.xyz
+    ```
+  </Step>
+
+  <Step title="Server Returns 402">
+    ```json
+    HTTP/1.1 402 Payment Required
+    {
+      "paymentId": "pay_1234567890",
+      "paymentRequirements": {
+        "payTo": "0x...",
+        "maxAmountRequired": "1000000",
+        "asset": "0x...",
+        "network": "cronos-testnet",
+        "resource": "/api/perpai/quote"
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Client Signs Authorization">
+    ```typescript
+    const message = JSON.stringify({
+      from: walletAddress,
+      to: paymentRequirements.payTo,
+      value: paymentRequirements.maxAmountRequired,
+      validAfter: Math.floor(Date.now() / 1000),
+      validBefore: Math.floor(Date.now() / 1000) + 300,
+      nonce: Date.now()
+    });
+
+    const signature = await wallet.signMessage(message);
+    ```
+  </Step>
+
+  <Step title="Client Submits Payment">
+    ```bash
+    POST /api/pay HTTP/1.1
+    Content-Type: application/json
+
+    {
+      "paymentId": "pay_1234567890",
+      "paymentHeader": "...",
+      "paymentRequirements": {...}
+    }
+    ```
+  </Step>
+
+  <Step title="Facilitator Settles On-Chain">
+    Server verifies signature and settles USDC transfer via Facilitator SDK.
+    ```typescript
+    const result = await facilitatorService.settlePayment(
+      paymentHeader,
+      paymentRequirements
+    );
+    ```
+  </Step>
+
+  <Step title="Server Grants Entitlement">
+    ```json
+    HTTP/1.1 200 OK
+    {
+      "success": true,
+      "paymentId": "pay_1234567890",
+      "txHash": "0x..."
+    }
+    ```
+  </Step>
+
+  <Step title="Client Retries with Payment ID">
+    ```bash
+    GET /api/perpai/quote HTTP/1.1
+    X-Payment-Id: pay_1234567890
+    ```
+  </Step>
+
+  <Step title="Server Returns Content">
+    ```json
+    HTTP/1.1 200 OK
+    {
+      "quote": {
+        "entryPrice": 2450.50,
+        "liquidationPrice": 2205.45
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Implementation
+
+### Protecting Routes
+
+```typescript
+import { requirePayment } from '@/services/x402/payment-middleware';
+
+router.post('/quote',
+  requirePayment({
+    merchantAddress: process.env.PAYMENT_RECIPIENT_ADDRESS,
+    amount: '10000', // 0.01 USDC
+    resourceUrl: '/api/perpai/quote',
+  }),
+  async (req, res) => {
+    // Route is protected - only executes if payment verified
+    const quote = await getQuote(req.body);
+    res.json(quote);
+  }
+);
+```
+
+### Settlement Endpoint
+
+```typescript
+import { facilitatorService } from '@/services/x402/facilitator-service';
+
+router.post('/pay', async (req, res) => {
+  const { paymentId, paymentHeader, paymentRequirements } = req.body;
+
+  const result = await facilitatorService.settlePayment(
+    paymentHeader,
+    paymentRequirements
+  );
+
+  if (!result.success) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  // Record payment in database
+  await supabase.from('payments').insert({
+    payment_id: paymentId,
+    tx_hash: result.txHash,
+    amount: paymentRequirements.maxAmountRequired,
+    status: 'settled'
+  });
+
+  res.json({ success: true, txHash: result.txHash });
+});
+```
+
+## Entitlement Caching
+
+Payments are cached in memory for fast subsequent requests:
+
+```typescript
+const entitlementCache = new Map<string, {
+  paymentId: string;
+  resourceUrl: string;
+  userAddress: string;
+  timestamp: number;
+}>();
+
+// Check cache before requiring payment
+if (paymentId && entitlementCache.has(paymentId)) {
+  const entitlement = entitlementCache.get(paymentId);
+  if (entitlement.resourceUrl === params.resourceUrl) {
+    req.isEntitled = true;
+    return next();
+  }
+}
+```
+
+## Security Features
+
+<AccordionGroup>
+  <Accordion title="Signature Verification">
+    All payment headers are verified using EIP-3009 signature recovery before settlement.
+  </Accordion>
+
+  <Accordion title="Nonce Tracking">
+    Nonces are tracked to prevent replay attacks. Each payment uses a unique nonce.
+  </Accordion>
+
+  <Accordion title="Expiration">
+    Payment authorizations include `validBefore` timestamp. Expired payments are rejected.
+  </Accordion>
+
+  <Accordion title="Amount Limits">
+    `maxAmountRequired` enforces maximum payment amount. Facilitator rejects overpayments.
+  </Accordion>
+</AccordionGroup>
+
+## Network Configuration
+
+| Network | Chain ID | Facilitator URL |
+|---------|----------|-----------------|
+| Testnet | 338 | https://facilitator.cronos.org |
+| Mainnet | 25 | https://facilitator.cronos.org |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Session Escrow"
+    icon="wallet"
+    href="/essentials/sessions"
+  >
+    Learn about gasless payment sessions
+  </Card>
+  <Card
+    title="SDK Integration"
+    icon="code"
+    href="/sdk/agent-sdk"
+  >
+    Integrate x402 in your agent
+  </Card>
+</CardGroup>

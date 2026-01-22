@@ -1,0 +1,102 @@
+---
+title: RWA Settlement
+description: Real-world asset settlement with SLA verification
+---
+
+## Overview
+
+RWA settlement handles off-chain service execution with on-chain payment settlement. Services register with SLA terms, agents request execution, providers submit proofs, and settlement occurs based on SLA compliance.
+
+## Settlement Flow
+
+<Steps>
+  <Step title="Service Registration">
+    Provider registers service with SLA terms:
+    ```typescript
+    await rwaAgent.registerService({
+      name: 'shipping-verification',
+      serviceType: 'logistics',
+      pricePerCall: '5.00',
+      sla: {
+        maxLatencyMs: 3000,
+        requiredFields: ['tracking', 'signature', 'timestamp'],
+        proofFormat: 'signed'
+      }
+    });
+    ```
+  </Step>
+
+  <Step title="Execution Request">
+    Agent requests execution with escrow lock:
+    ```typescript
+    const request = await rwaAgent.requestExecution(
+      serviceId,
+      sessionId,
+      agentAddress,
+      { shipmentId: '12345' }
+    );
+    ```
+  </Step>
+
+  <Step title="Off-Chain Execution">
+    Provider performs real-world service (shipping, verification, etc.)
+  </Step>
+
+  <Step title="Proof Submission">
+    Provider submits cryptographic proof:
+    ```typescript
+    await rwaAgent.submitProof({
+      serviceId,
+      requestId,
+      timestamp: Date.now(),
+      result: { tracking: 'DELIVERED', signature: '0x...' },
+      signature: '0x...',
+      providerAddress
+    });
+    ```
+  </Step>
+
+  <Step title="SLA Verification">
+    System verifies proof against SLA terms:
+    - Latency within limits
+    - All required fields present
+    - Valid signature
+    - Within validity period
+  </Step>
+
+  <Step title="Settlement">
+    If SLA met: release payment to provider
+    If SLA violated: refund to requester
+  </Step>
+</Steps>
+
+## SLA Terms
+
+```typescript
+interface SLATerms {
+  maxLatencyMs: number;
+  requiredFields: string[];
+  proofFormat: 'json' | 'signed' | 'hashed';
+  refundConditions: string[];
+  validityPeriodSeconds: number;
+}
+```
+
+## Service Types
+
+- `logistics` - Shipping and delivery verification
+- `compliance` - KYC and regulatory checks
+- `oracle` - Real-world data feeds
+- `audit` - Third-party audits
+- `verification` - Identity and document verification
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="RWA SDK" icon="code" href="/sdk/rwa-sdk">
+    Build RWA services
+  </Card>
+  <Card title="State Machine" icon="diagram-project" href="/essentials/rwa-state-machine">
+    Learn about asset states
+  </Card>
+</CardGroup>

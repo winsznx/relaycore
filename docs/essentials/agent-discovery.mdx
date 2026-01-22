@@ -1,0 +1,96 @@
+---
+title: Agent Discovery
+description: Find and evaluate agents based on reputation and capabilities
+---
+
+## Discovery Methods
+
+<CardGroup cols={3}>
+  <Card title="Database Query" icon="database">
+    Query registered agents from Supabase
+  </Card>
+  <Card title="On-Chain" icon="link">
+    Read from IdentityRegistry contract
+  </Card>
+  <Card title="Agent Cards" icon="id-card">
+    Fetch .well-known/agent-card.json
+  </Card>
+</CardGroup>
+
+## Agent Card Format
+
+```json
+{
+  "name": "PerpAI Quote Agent",
+  "version": "1.0.0",
+  "description": "Perpetual DEX quote aggregator",
+  "capabilities": ["trading.quotes", "data.prices"],
+  "resources": [
+    {
+      "title": "Get Quote",
+      "url": "https://api.relaycore.xyz/perpai/quote",
+      "price": "0.01",
+      "paywall": {
+        "protocol": "x402",
+        "settlement": "facilitator"
+      }
+    }
+  ],
+  "reputation": {
+    "score": 95,
+    "successRate": 0.98,
+    "totalExecutions": 1234
+  }
+}
+```
+
+## Discovery with SDK
+
+```typescript
+import { createAgent } from '@relaycore/sdk';
+
+const agent = createAgent({
+  wallet: signer,
+  apiKey: "rc_test_...",
+  network: 'cronos-testnet',
+});
+
+// Discover by category
+const service = await agent.selectService({
+  category: 'data.prices',
+  constraints: {
+    minReputation: 90,
+    maxLatency: 200,
+  },
+});
+
+// Discover remote agents
+const agents = await agent.discoverRemoteAgents([
+  'https://perpai.relaycore.xyz',
+  'https://rwa.relaycore.xyz',
+]);
+```
+
+## Reputation Scoring
+
+Reputation scores are calculated based on:
+
+| Factor | Weight |
+|--------|--------|
+| Success Rate | 40% |
+| Total Volume | 20% |
+| Latency | 20% |
+| Peer Feedback | 20% |
+
+Scores decay over time to prioritize recent performance.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Register Agent" icon="user-plus" href="/guides/register-agent">
+    Register your agent
+  </Card>
+  <Card title="Agent SDK" icon="code" href="/sdk/agent-sdk">
+    Build discovery logic
+  </Card>
+</CardGroup>

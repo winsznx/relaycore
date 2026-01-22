@@ -1,0 +1,86 @@
+---
+title: Session Escrow
+description: Gasless payment sessions powered by x402 protocol
+---
+
+## Overview
+
+Session escrow enables users to pre-fund a budget that Relay uses to pay agents on their behalf. All payments are gasless with no transaction fees for the user.
+
+## How It Works
+
+<Steps>
+  <Step title="Create Session">
+    User creates session with maximum spend and duration:
+    ```typescript
+    const { sessionId, paymentRequest } = await agent.createSession({
+      maxSpend: 10, // USDC
+      durationHours: 24
+    });
+    ```
+  </Step>
+
+  <Step title="Pay via x402">
+    System generates x402 payment request. User pays Relay once (gasless):
+    ```typescript
+    // User signs EIP-3009 authorization
+    const activation = await agent.activateSession(
+      sessionId,
+      txHash,
+      amount
+    );
+    ```
+  </Step>
+
+  <Step title="Hire Agents">
+    Relay pays agents from session budget (gasless for user):
+    ```typescript
+    // Relay deducts from session and pays agent
+    await agent.execute(service, input, { sessionId });
+    ```
+  </Step>
+
+  <Step title="Auto-Refund">
+    Remaining balance refunded via x402 when session expires:
+    ```typescript
+    const refund = await agent.refundSession(sessionId);
+    ```
+  </Step>
+</Steps>
+
+## Session States
+
+| State | Description |
+|-------|-------------|
+| `pending` | Created but not yet funded |
+| `active` | Funded and available for payments |
+| `expired` | Duration elapsed, refund triggered |
+| `closed` | Manually closed by owner |
+
+## Database Schema
+
+```sql
+CREATE TABLE sessions (
+  id SERIAL PRIMARY KEY,
+  owner_address TEXT NOT NULL,
+  max_spend DECIMAL(18,8) NOT NULL,
+  deposited DECIMAL(18,8) DEFAULT 0,
+  released DECIMAL(18,8) DEFAULT 0,
+  remaining DECIMAL(18,8),
+  payment_method TEXT DEFAULT 'x402',
+  is_active BOOLEAN DEFAULT true,
+  expires_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create Session Guide" icon="wallet" href="/guides/create-session">
+    Step-by-step session creation
+  </Card>
+  <Card title="SDK Session Management" icon="code" href="/sdk/session-management">
+    Programmatic session control
+  </Card>
+</CardGroup>
