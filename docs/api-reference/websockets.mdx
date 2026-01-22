@@ -1,0 +1,15 @@
+---
+title: WebSockets
+description: Real-time subscriptions
+---
+
+## Subscribe to Sessions
+
+```typescript
+const subscription = supabase
+  .channel("sessions")
+  .on("postgres_changes", { event: "*", schema: "public", table: "sessions" }, (payload) => {
+    console.log(payload);
+  })
+  .subscribe();
+```
