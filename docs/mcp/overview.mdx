@@ -1,0 +1,147 @@
+---
+title: MCP Server Overview
+description: Model Context Protocol server with 60+ tools for AI agents
+---
+
+## What is the MCP Server?
+
+The Relay Core MCP server provides structured access to Cronos blockchain, Crypto.com Exchange API, and Relay Core payment infrastructure through 60+ tools.
+
+## Installation
+
+<Steps>
+  <Step title="Install Dependencies">
+    ```bash
+    cd mcp-server
+    npm install
+    ```
+  </Step>
+
+  <Step title="Configure Environment">
+    ```bash
+    cp .env.example .env
+    ```
+
+    Edit `.env`:
+    ```bash
+    RELAY_CORE_API_URL=http://localhost:4000
+    RELAY_CORE_API_KEY=rc_xxxxx
+    WALLET_PRIVATE_KEY=your-key
+    ESCROW_CONTRACT_ADDRESS=0x9D340a67ddD4Fcf5eC590b7B67e1fE8d020F7D61
+    ```
+  </Step>
+
+  <Step title="Build">
+    ```bash
+    npm run build
+    ```
+  </Step>
+
+  <Step title="Run">
+    ```bash
+    npm run dev
+    ```
+  </Step>
+</Steps>
+
+## Claude Desktop Integration
+
+Add to Claude Desktop configuration:
+
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "relay-core": {
+      "command": "node",
+      "args": ["/path/to/relaycore/mcp-server/dist/index.js"],
+      "env": {
+        "RELAY_CORE_API_URL": "http://localhost:4000",
+        "RELAY_CORE_API_KEY": "rc_xxxxx"
+      }
+    }
+  }
+}
+```
+
+## Tool Categories
+
+<CardGroup cols={3}>
+  <Card title="x402 Payments" icon="credit-card">
+    3 tools for wallet status, payment settlement, and quote retrieval
+  </Card>
+  <Card title="Services" icon="server">
+    9 tools for service registration, discovery, and management
+  </Card>
+  <Card title="Reputation" icon="star">
+    6 tools for reputation scores, feedback, and trends
+  </Card>
+  <Card title="Agents" icon="robot">
+    7 tools for agent registration and activity tracking
+  </Card>
+  <Card title="ACPS" icon="wallet">
+    7 tools for session creation, payment release, and refunds
+  </Card>
+  <Card title="RWA" icon="building">
+    11 tools for asset state management and settlement
+  </Card>
+  <Card title="Trading" icon="chart-line">
+    9 tools for quotes, venues, and position tracking
+  </Card>
+  <Card title="Analytics" icon="chart-bar">
+    8 tools for metrics, health checks, and leaderboards
+  </Card>
+</CardGroup>
+
+## Example Usage
+
+<CodeGroup>
+
+```bash Market Data
+Get the current BTC price on Crypto.com
+
+Claude: [Uses crypto_com_get_ticker tool]
+BTC/USDT: $97,234.50
+24h Volume: 1,234.56 BTC
+```
+
+```bash Service Discovery
+Find oracle services with reputation above 80
+
+Claude: [Uses relay_discover_services tool]
+Found 3 oracle services:
+1. PerpAI Quote Agent - Score: 95
+2. Pyth Price Feed - Score: 88
+3. Chainlink Oracle - Score: 92
+```
+
+```bash Agent Registration
+Register my agent as a data provider
+
+Claude: [Uses relay_register_agent tool]
+Agent registered on Cronos Testnet
+Agent ID: 2
+TX: 0x1234...
+```
+
+</CodeGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Tools Reference"
+    icon="book"
+    href="/mcp/tools-reference"
+  >
+    Explore all 60+ tools
+  </Card>
+  <Card
+    title="Authentication"
+    icon="key"
+    href="/mcp/authentication"
+  >
+    Learn about API key authentication
+  </Card>
+</CardGroup>

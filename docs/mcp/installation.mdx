@@ -1,0 +1,27 @@
+---
+title: MCP Installation
+description: Install and configure the MCP server
+---
+
+## Install
+
+```bash
+cd mcp-server
+npm install
+npm run build
+```
+
+## Configure Claude
+
+Add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "relay-core": {
+      "command": "node",
+      "args": ["/path/to/mcp-server/dist/index.js"]
+    }
+  }
+}
+```
