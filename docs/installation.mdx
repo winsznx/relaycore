@@ -1,0 +1,215 @@
+---
+title: Installation
+description: Complete installation guide for Relay Core
+---
+
+## System Requirements
+
+<CardGroup cols={2}>
+  <Card title="Node.js" icon="node-js">
+    Version 20 or higher
+  </Card>
+  <Card title="Package Manager" icon="box">
+    pnpm (recommended) or npm
+  </Card>
+  <Card title="Database" icon="database">
+    Supabase account
+  </Card>
+  <Card title="Wallet" icon="wallet">
+    Cronos Testnet with CRO and USDC
+  </Card>
+</CardGroup>
+
+## Installation Steps
+
+<Steps>
+  <Step title="Clone Repository">
+    ```bash
+    git clone https://github.com/winsznx/relaycore.git
+    cd relaycore
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    Using pnpm (recommended):
+    ```bash
+    pnpm install
+    ```
+
+    Or using npm:
+    ```bash
+    npm install
+    ```
+  </Step>
+
+  <Step title="Environment Configuration">
+    Copy the example environment file:
+    ```bash
+    cp .env.example .env
+    ```
+
+    Edit `.env` with your credentials:
+    ```bash
+    # Supabase
+    VITE_SUPABASE_URL=https://your-project.supabase.co
+    VITE_SUPABASE_ANON_KEY=your-anon-key
+    SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+    # WalletConnect
+    VITE_WALLETCONNECT_PROJECT_ID=your-project-id
+
+    # Wallet Keys
+    WALLET_PRIVATE_KEY=your-private-key
+    RELAY_PRIVATE_KEY=your-relay-wallet-key
+
+    # Contracts
+    ESCROW_CONTRACT_ADDRESS=0x9D340a67ddD4Fcf5eC590b7B67e1fE8d020F7D61
+
+    # Cronos
+    VITE_CRONOS_RPC_URL=https://evm-t3.cronos.org
+    CRONOS_RPC_URL=https://evm-t3.cronos.org
+
+    # USDC Token
+    VITE_USDCE_CONTRACT=0x...
+
+    # x402
+    VITE_X402_FACILITATOR_URL=https://facilitator.cronos.org
+    ```
+  </Step>
+
+  <Step title="Database Setup">
+    Run migrations in order:
+    ```bash
+    pnpm db:migrate
+    ```
+
+    Or manually execute SQL files:
+    1. `supabase/migrations/001_relay_core_schema.sql`
+    2. `supabase/migrations/002_complete_schema.sql`
+    3. `supabase/migrations/012_escrow_sessions.sql`
+    4. `supabase/migrations/013_rwa_settlement.sql`
+    5. `supabase/migrations/20260119_rwa_state_machine.sql`
+    6. `supabase/migrations/20260122_fix_schema_gaps.sql`
+  </Step>
+
+  <Step title="Start Services">
+    Open three terminal windows:
+
+    **Terminal 1 - Frontend**
+    ```bash
+    pnpm dev
+    ```
+    Runs on http://localhost:5173
+
+    **Terminal 2 - GraphQL API**
+    ```bash
+    pnpm dev:graphql
+    ```
+    Runs on http://localhost:4000
+
+    **Terminal 3 - Indexers**
+    ```bash
+    pnpm dev:indexers
+    ```
+    Background cron jobs
+  </Step>
+
+  <Step title="MCP Server (Optional)">
+    ```bash
+    cd mcp-server
+    npm install
+    npm run build
+    npm run dev
+    ```
+  </Step>
+</Steps>
+
+## Verification
+
+<Tabs>
+  <Tab title="Frontend">
+    Navigate to http://localhost:5173
+    
+    You should see the Relay Core dashboard. Connect your wallet to verify integration.
+  </Tab>
+
+  <Tab title="GraphQL">
+    Navigate to http://localhost:4000/graphql
+    
+    GraphQL Playground should load. Try this query:
+    ```graphql
+    query {
+      services(limit: 5) {
+        id
+        name
+        category
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="Database">
+    Check Supabase dashboard to verify tables were created:
+    - services
+    - payments
+    - sessions
+    - agent_reputation
+    - rwa_execution_requests
+  </Tab>
+</Tabs>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Port Already in Use">
+    If port 5173 or 4000 is already in use:
+    ```bash
+    # Kill process on port 5173
+    lsof -ti:5173 | xargs kill -9
+
+    # Kill process on port 4000
+    lsof -ti:4000 | xargs kill -9
+    ```
+  </Accordion>
+
+  <Accordion title="Database Connection Failed">
+    Verify Supabase credentials in `.env`:
+    - Check `VITE_SUPABASE_URL` matches your project URL
+    - Verify `VITE_SUPABASE_ANON_KEY` is correct
+    - Ensure Row Level Security policies are configured
+  </Accordion>
+
+  <Accordion title="Wallet Connection Issues">
+    - Ensure you're on Cronos Testnet (Chain ID 338)
+    - Verify `VITE_WALLETCONNECT_PROJECT_ID` is set
+    - Check browser console for errors
+  </Accordion>
+
+  <Accordion title="Build Errors">
+    Clear cache and reinstall:
+    ```bash
+    rm -rf node_modules pnpm-lock.yaml
+    pnpm install
+    pnpm build
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Quick Start"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Execute your first x402 payment
+  </Card>
+  <Card
+    title="Environment Variables"
+    icon="gear"
+    href="/deployment/environment-variables"
+  >
+    Learn about all configuration options
+  </Card>
+</CardGroup>

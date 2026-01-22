@@ -1,0 +1,147 @@
+---
+title: Quick Start
+description: Get started with Relay Core in under 5 minutes
+---
+
+## Prerequisites
+
+<Check>Node.js 20 or higher</Check>
+<Check>pnpm or npm</Check>
+<Check>Supabase account</Check>
+<Check>Cronos Testnet wallet with CRO and USDC</Check>
+
+## Installation
+
+<Steps>
+  <Step title="Clone Repository">
+    ```bash
+    git clone https://github.com/winsznx/relaycore.git
+    cd relaycore
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    ```bash
+    pnpm install
+    ```
+  </Step>
+
+  <Step title="Configure Environment">
+    ```bash
+    cp .env.example .env
+    ```
+
+    Edit `.env` with your credentials:
+    ```bash
+    VITE_SUPABASE_URL=https://your-project.supabase.co
+    VITE_SUPABASE_ANON_KEY=your-anon-key
+    VITE_WALLETCONNECT_PROJECT_ID=your-project-id
+    WALLET_PRIVATE_KEY=your-private-key
+    RELAY_PRIVATE_KEY=your-relay-wallet-key
+    ESCROW_CONTRACT_ADDRESS=0x9D340a67ddD4Fcf5eC590b7B67e1fE8d020F7D61
+    ```
+  </Step>
+
+  <Step title="Setup Database">
+    ```bash
+    pnpm db:migrate
+    ```
+
+    Or run migrations manually in order:
+    1. `001_relay_core_schema.sql`
+    2. `002_complete_schema.sql`
+    3. `012_escrow_sessions.sql`
+    4. `013_rwa_settlement.sql`
+    5. `20260119_rwa_state_machine.sql`
+    6. `20260122_fix_schema_gaps.sql`
+  </Step>
+
+  <Step title="Start Services">
+    ```bash
+    pnpm dev              # Frontend (port 5173)
+    pnpm dev:graphql      # GraphQL API (port 4000)
+    pnpm dev:indexers     # Background cron jobs
+    ```
+  </Step>
+</Steps>
+
+## Your First x402 Payment
+
+<Steps>
+  <Step title="Connect Wallet">
+    Navigate to `http://localhost:5173` and connect your Cronos Testnet wallet.
+  </Step>
+
+  <Step title="Navigate to Trade">
+    Go to Dashboard → Trade page.
+  </Step>
+
+  <Step title="Get Quote">
+    Click "Get Quote" and select "Direct Payment" option.
+  </Step>
+
+  <Step title="Sign Payment">
+    Sign the EIP-3009 authorization when prompted by your wallet.
+  </Step>
+
+  <Step title="View Result">
+    Payment settles via Facilitator and quote returns with pricing data.
+  </Step>
+</Steps>
+
+<Check>Payment complete! You've executed your first x402 transaction.</Check>
+
+## Create a Session
+
+<Steps>
+  <Step title="Navigate to Sessions">
+    Go to Dashboard → x402 Sessions.
+  </Step>
+
+  <Step title="Create Session">
+    Click "Create Session" and set:
+    - Budget: 10 USDC
+    - Duration: 24 hours
+  </Step>
+
+  <Step title="Pay to Activate">
+    Sign the x402 payment to deposit funds into the session.
+  </Step>
+
+  <Step title="Use Session">
+    Select the session when making paid requests. Relay pays agents on your behalf.
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="SDK Documentation"
+    icon="code"
+    href="/sdk/overview"
+  >
+    Build agents with the Relay SDK
+  </Card>
+  <Card
+    title="MCP Server"
+    icon="server"
+    href="/mcp/overview"
+  >
+    Integrate with Claude via MCP
+  </Card>
+  <Card
+    title="API Reference"
+    icon="book"
+    href="/api-reference/overview"
+  >
+    Explore GraphQL and REST APIs
+  </Card>
+  <Card
+    title="Smart Contracts"
+    icon="file-contract"
+    href="/contracts/escrow-session"
+  >
+    Learn about on-chain components
+  </Card>
+</CardGroup>

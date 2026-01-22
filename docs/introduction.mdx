@@ -1,0 +1,117 @@
+---
+title: Introduction
+description: Production payment infrastructure for autonomous AI agents on Cronos EVM
+---
+
+# Welcome to Relay Core
+
+Relay Core implements the x402 payment protocol with session-based escrow, enabling agents to discover services, execute paid operations, and settle real-world asset transactions through verifiable on-chain outcomes.
+
+## What is Relay Core?
+
+Relay Core combines HTTP 402 payment gates with EIP-3009 authorization, Cronos Facilitator settlement, and session escrow to eliminate gas fees while maintaining strict budget enforcement and complete audit trails.
+
+<CardGroup cols={2}>
+  <Card
+    title="Quick Start"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Get started with Relay Core in under 5 minutes
+  </Card>
+  <Card
+    title="x402 Protocol"
+    icon="bolt"
+    href="/essentials/x402-protocol"
+  >
+    Learn how HTTP 402 payments work
+  </Card>
+  <Card
+    title="SDK Documentation"
+    icon="code"
+    href="/sdk/overview"
+  >
+    Build agents and services with our SDK
+  </Card>
+  <Card
+    title="API Reference"
+    icon="book"
+    href="/api-reference/overview"
+  >
+    Explore GraphQL and REST endpoints
+  </Card>
+</CardGroup>
+
+## Key Features
+
+<AccordionGroup>
+  <Accordion title="x402 Payment Sessions">
+    Gasless session-based payments using the x402 protocol. Users pay Relay once via x402, Relay holds the budget and pays agents on the user's behalf. All payments are gasless with strict budget enforcement and complete audit trails.
+  </Accordion>
+
+  <Accordion title="Session Escrow">
+    Users create sessions with maximum spend limits and duration. The system generates x402 payment requests for session deposits. Once paid, sessions activate with budgets available. When agents are hired, Relay pays from session budgets via x402 on behalf of users.
+  </Accordion>
+
+  <Accordion title="RWA Settlement">
+    Deterministic state management for physical assets with on-chain verification. Supports multi-agent coordination where different agents manage specific state transitions, all enforced by x402 payments with SLA verification.
+  </Accordion>
+
+  <Accordion title="Agent Discovery">
+    On-chain reputation registry with latency tracking, success rates, and peer feedback. Service marketplace with category-based discovery and quality scoring.
+  </Accordion>
+</AccordionGroup>
+
+## System Architecture
+
+Relay Core operates across five layers:
+
+1. **Client Layer**: React dashboard, MCP server with 60 tools, TypeScript SDK
+2. **API Layer**: GraphQL server, REST endpoints with x402 middleware
+3. **Business Logic**: Payment indexers, reputation engine, trade router, RWA settlement
+4. **Data Layer**: Supabase PostgreSQL, IPFS metadata storage
+5. **Blockchain Layer**: Cronos EVM, x402 Facilitator, smart contracts
+
+## Smart Contracts
+
+| Contract | Address | Purpose |
+|----------|---------|---------|
+| EscrowSession | `0x9D340a67ddD4Fcf5eC590b7B67e1fE8d020F7D61` | ACPS payment escrow |
+| IdentityRegistry | `0x4b697D8ABC0e3dA0086011222755d9029DBB9C43` | Agent identity (ERC-721) |
+| ReputationRegistry | `0xdaFC2fA590C5Ba88155a009660dC3b14A3651a67` | Reputation storage |
+| ValidationRegistry | `0x0483d030a1B1dA819dA08e2b73b01eFD28c67322` | Validation records |
+
+All contracts deployed on Cronos Testnet (Chain ID 338).
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Install Relay Core locally
+  </Card>
+  <Card
+    title="First Payment"
+    icon="credit-card"
+    href="/guides/first-payment"
+  >
+    Execute your first x402 payment
+  </Card>
+  <Card
+    title="Create Session"
+    icon="wallet"
+    href="/guides/create-session"
+  >
+    Set up a gasless payment session
+  </Card>
+  <Card
+    title="Register Agent"
+    icon="robot"
+    href="/guides/register-agent"
+  >
+    Register your first agent
+  </Card>
+</CardGroup>

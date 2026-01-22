@@ -1,0 +1,140 @@
+{
+    "$schema": "https://mintlify.com/schema.json",
+    "name": "Relay Core",
+    "logo": {
+        "dark": "/logo/relay-white.svg",
+        "light": "/logo/relay-dark.svg"
+    },
+    "favicon": "/logo/relay-favicon.svg",
+    "colors": {
+        "primary": "#FF8A4C",
+        "light": "#FFD84D",
+        "dark": "#111111",
+        "anchors": {
+            "from": "#FF8A4C",
+            "to": "#FFD84D"
+        }
+    },
+    "topbarLinks": [
+        {
+            "name": "Dashboard",
+            "url": "https://relaycore.xyz"
+        },
+        {
+            "name": "GitHub",
+            "url": "https://github.com/winsznx/relaycore"
+        }
+    ],
+    "topbarCtaButton": {
+        "name": "Get Started",
+        "url": "https://relaycore.xyz/dashboard"
+    },
+    "tabs": [
+        {
+            "name": "API Reference",
+            "url": "api-reference"
+        },
+        {
+            "name": "SDK",
+            "url": "sdk"
+        },
+        {
+            "name": "MCP Server",
+            "url": "mcp"
+        }
+    ],
+    "anchors": [
+        {
+            "name": "Community",
+            "icon": "discord",
+            "url": "https://discord.gg/relaycore"
+        },
+        {
+            "name": "Blog",
+            "icon": "newspaper",
+            "url": "https://relaycore.xyz/blog"
+        }
+    ],
+    "navigation": [
+        {
+            "group": "Getting Started",
+            "pages": [
+                "introduction",
+                "quickstart",
+                "installation"
+            ]
+        },
+        {
+            "group": "Core Concepts",
+            "pages": [
+                "essentials/architecture",
+                "essentials/x402-protocol",
+                "essentials/sessions",
+                "essentials/rwa-settlement",
+                "essentials/agent-discovery"
+            ]
+        },
+        {
+            "group": "Guides",
+            "pages": [
+                "guides/first-payment",
+                "guides/create-session",
+                "guides/register-agent",
+                "guides/build-service"
+            ]
+        },
+        {
+            "group": "SDK Documentation",
+            "pages": [
+                "sdk/overview",
+                "sdk/agent-sdk",
+                "sdk/service-sdk",
+                "sdk/session-management",
+                "sdk/error-handling"
+            ]
+        },
+        {
+            "group": "MCP Server",
+            "pages": [
+                "mcp/overview",
+                "mcp/installation",
+                "mcp/tools-reference",
+                "mcp/authentication"
+            ]
+        },
+        {
+            "group": "API Reference",
+            "pages": [
+                "api-reference/overview",
+                "api-reference/graphql",
+                "api-reference/rest-endpoints",
+                "api-reference/websockets"
+            ]
+        },
+        {
+            "group": "Smart Contracts",
+            "pages": [
+                "contracts/escrow-session",
+                "contracts/identity-registry",
+                "contracts/reputation-registry"
+            ]
+        },
+        {
+            "group": "Deployment",
+            "pages": [
+                "deployment/local-development",
+                "deployment/production",
+                "deployment/environment-variables"
+            ]
+        }
+    ],
+    "footerSocials": {
+        "github": "https://github.com/winsznx/relaycore",
+        "twitter": "https://twitter.com/relaycore"
+    },
+    "analytics": {
+        "ga4": {
+            "measurementId": "G-XXXXXXXXXX"
+        }
+    }
+}
