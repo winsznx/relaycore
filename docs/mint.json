@@ -7,12 +7,12 @@
     },
     "favicon": "/logo/relay-favicon.svg",
     "colors": {
-        "primary": "#FF8A4C",
-        "light": "#FFD84D",
-        "dark": "#111111",
+        "primary": "#5C40D0",
+        "light": "#20D4BF",
+        "dark": "#0F1A3C",
         "anchors": {
-            "from": "#FF8A4C",
-            "to": "#FFD84D"
+            "from": "#5C40D0",
+            "to": "#20D4BF"
         }
     },
     "topbarLinks": [
@@ -46,8 +46,8 @@
     "anchors": [
         {
             "name": "Community",
-            "icon": "discord",
-            "url": "https://discord.gg/relaycore"
+            "icon": "telegram",
+            "url": "https://t.me/relay_core"
         },
         {
             "name": "Blog",
