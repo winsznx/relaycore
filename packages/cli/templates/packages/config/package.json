@@ -1,0 +1,9 @@
+{
+    "name": "@relaycore/config",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./tsconfig": "./tsconfig.base.json"
+    }
+}
