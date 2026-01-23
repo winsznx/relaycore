@@ -6,6 +6,7 @@ import { initCommand } from './commands/init.js';
 import { authCommand } from './commands/auth.js';
 import { agentCommand } from './commands/agent.js';
 import { serviceCommand } from './commands/service.js';
+import { routeCommand } from './commands/route.js';
 import { devCommand } from './commands/dev.js';
 
 const program = new Command();
@@ -23,6 +24,7 @@ program
 program.addCommand(authCommand);
 program.addCommand(agentCommand);
 program.addCommand(serviceCommand);
+program.addCommand(routeCommand);
 
 program
     .command('dev')

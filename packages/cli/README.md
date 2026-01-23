@@ -95,6 +95,30 @@ relaycore service register  # Register new service
 relaycore service list      # List your services
 ```
 
+### `route`
+Create x402-protected proxy routes for any API endpoint.
+
+```bash
+relaycore route add         # Create a new paid proxy route
+relaycore route list        # List your routes with earnings
+relaycore route remove <id> # Remove a route
+relaycore route test <id>   # Test a route (shows 402 requirements)
+```
+
+**Example: Make any API paid**
+```bash
+relaycore route add \
+  --url https://api.example.com/data \
+  --price 0.01 \
+  --name "Data API"
+
+# Output:
+#   Route Created Successfully
+#   Proxy URL: https://api.relaycore.xyz/proxy/abc123
+```
+
+Requests to the proxy URL require x402 payment before being forwarded to the upstream API.
+
 ### `dev`
 ```bash
 relaycore dev
