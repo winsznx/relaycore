@@ -1,0 +1,159 @@
+---
+title: CLI Reference
+description: Command-line interface for building and deploying RelayCore agents
+---
+
+## Overview
+
+The RelayCore CLI is the primary tool for scaffolding, developing, and managing AI agents on the RelayCore network. It handles project initialization, local development simulation, and network interactions.
+
+### Installation
+
+```bash
+npm install -g @relaycore/cli
+```
+
+### Usage
+
+```bash
+relaycore <command> [options]
+```
+
+---
+
+## Commands
+
+### `init`
+
+Initialize a new RelayCore project with a complete monorepo structure, including agent server, web dashboard, and shared packages.
+
+```bash
+relaycore init [project-name]
+```
+
+**Options**:
+- `project-name`: Name of the new project directory (optional)
+
+**What it does**:
+- Creates a TurboRepo monorepo
+- Sets up `apps/agent-server` (MCP-compatible)
+- Sets up `apps/web` (Next.js dashboard)
+- Installs all dependencies
+- Configures TypeScript and ESLint
+
+---
+
+### `dev`
+
+Start the local development environment. runs both the agent server and web dashboard concurrently.
+
+```bash
+relaycore dev [options]
+```
+
+**Options**:
+- `-p, --port <number>`: Port for the web dashboard (default: 3000)
+
+**Example**:
+```bash
+relaycore dev -p 3001
+```
+
+---
+
+### `auth`
+
+Manage authentication sessions with the RelayCore network.
+
+#### `auth login`
+Login to RelayCore to enable network interactions.
+
+```bash
+relaycore auth login
+```
+
+#### `auth status`
+Check current authentication status.
+
+```bash
+relaycore auth status
+```
+
+#### `auth logout`
+Logout and clear local session credentials.
+
+```bash
+relaycore auth logout
+```
+
+---
+
+### `agent`
+
+Manage autonomous agents.
+
+#### `agent register`
+Register a new agent on the network.
+
+```bash
+relaycore agent register
+```
+
+**Interactive Prompts**:
+- Agent Name
+- Description
+- Service endpoints
+- Capabilities (tags)
+
+#### `agent list`
+List all agents registered under your account.
+
+```bash
+relaycore agent list
+```
+
+---
+
+### `service`
+
+Manage RWA and autonomous services.
+
+#### `service register`
+Register a new service for agents to discover and use.
+
+```bash
+relaycore service register
+```
+
+**Interactive Prompts**:
+- Service Name
+- Service Type (e.g., `feature_flag`, `rwa_verification`)
+- Pricing (in USDC)
+- Endpoint URL
+
+#### `service list`
+List all services registered under your account.
+
+```bash
+relaycore service list
+```
+
+---
+
+## Project Structure
+
+When you run `relay init`, the following structure is created:
+
+```
+my-relay-project/
+├── packages/
+│   ├── types/          # Shared TypeScript types
+│   ├── config/         # Shared configuration
+├── apps/
+│   ├── agent-server/   # MCP Agent Server
+│   │   ├── src/
+│   │   │   └── tools/  # Custom agent tools
+│   ├── web/            # Dashboard UI
+├── turbo.json          # Monorepo config
+└── package.json
+```
