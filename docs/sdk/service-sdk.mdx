@@ -1,23 +1,592 @@
 ---
-title: Service SDK
-description: Build x402-protected services
+title: RelayService SDK
+description: Build and monetize services with x402 payment enforcement and reputation tracking
 ---
 
-## Define Service
+## Overview
+
+The `RelayService` class enables service providers to:
+- **Register services** with pricing and metadata
+- **Handle payments** via x402 protocol
+- **Prove delivery** with cryptographic evidence
+- **Track reputation** based on outcomes
+
+**Design Philosophy**: Explicit service definition, proof-first delivery, reputation as first-class.
+
+---
+
+## Installation
+
+```bash
+npm install @relaycore/sdk ethers
+```
+
+---
+
+## Quick Start
 
 ```typescript
-import { createService, defineService } from "@relaycore/sdk";
+import { RelayService } from '@relaycore/sdk';
+import { ethers } from 'ethers';
 
-const myService = defineService({
-  name: "price-feed",
-  category: "data.prices",
-  price: "0.01"
+// Initialize service
+const service = new RelayService({
+  wallet: new ethers.Wallet(privateKey, provider),
+  network: 'cronos-testnet',
+  apiUrl: 'https://api.relaycore.xyz'
 });
 
-const provider = createService({
-  wallet: signer,
-  network: "cronos-testnet"
+// Register service
+const registered = await service.register({
+  name: 'Pyth Price Oracle',
+  description: 'Real-time price feeds from Pyth Network',
+  category: 'oracle',
+  price: '100000', // 0.1 USDC per call
+  inputSchema: {
+    type: 'object',
+    properties: {
+      symbol: { type: 'string' }
+    },
+    required: ['symbol']
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      price: { type: 'number' },
+      timestamp: { type: 'number' }
+    }
+  }
 });
 
-await provider.register(myService);
+// Handle payments
+service.handlePayment<{ symbol: string }, { price: number; timestamp: number }>(
+  async (ctx) => {
+    // Execute service logic
+    const price = await getPythPrice(ctx.input.symbol);
+    
+    // Deliver result with proof
+    await ctx.deliver({
+      result: {
+        price: price.value,
+        timestamp: price.timestamp
+      },
+      proof: price.signature,
+      latencyMs: Date.now() - ctx.timestamp.getTime()
+    });
+  }
+);
 ```
+
+---
+
+## Core Methods
+
+### `constructor(config: ServiceConfig)`
+
+Initialize the service provider.
+
+**Parameters**:
+```typescript
+interface ServiceConfig {
+  wallet: ethers.Signer;  // Wallet for receiving payments
+  network?: Network;       // 'cronos-testnet' | 'cronos-mainnet'
+  apiUrl?: string;         // API endpoint
+}
+```
+
+---
+
+### `register(definition: ServiceDefinition): Promise<RegisteredService>`
+
+Register service on the RelayCore platform.
+
+**Parameters**:
+```typescript
+interface ServiceDefinition {
+  name: string;
+  description?: string;
+  category: string;              // e.g., 'oracle', 'trading', 'data'
+  price: string;                 // Price per call (base units)
+  endpoint?: string;             // Service endpoint URL
+  inputSchema?: JsonSchema;      // JSON Schema for input validation
+  outputSchema?: JsonSchema;     // JSON Schema for output validation
+  inputType?: string;            // Human-readable input type
+  outputType?: string;           // Human-readable output type
+  tags?: string[];               // Searchable tags
+  capabilities?: string[];       // Service capabilities
+  version?: string;              // Service version
+}
+```
+
+**Returns**:
+```typescript
+interface RegisteredService {
+  id: string;                    // Service ID
+  ownerAddress: string;          // Provider wallet address
+  registeredAt: Date;
+  isActive: boolean;
+}
+```
+
+**Example**:
+```typescript
+const service = await provider.register({
+  name: 'DEX Quote Aggregator',
+  description: 'Aggregate quotes from 6 perpetual DEX venues',
+  category: 'trading',
+  price: '10000', // 0.01 USDC
+  inputSchema: {
+    type: 'object',
+    properties: {
+      pair: { type: 'string' },
+      side: { type: 'string', enum: ['long', 'short'] },
+      leverage: { type: 'number', minimum: 1, maximum: 50 },
+      sizeUsd: { type: 'number', minimum: 100 }
+    },
+    required: ['pair', 'side', 'leverage', 'sizeUsd']
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      entryPrice: { type: 'number' },
+      liquidationPrice: { type: 'number' },
+      fundingRate: { type: 'number' },
+      bestVenue: { type: 'string' }
+    }
+  },
+  tags: ['dex', 'perpetuals', 'aggregator'],
+  capabilities: ['multi-venue', 'best-execution'],
+  version: '1.0.0'
+});
+
+console.log('Service registered:', service.id);
+```
+
+---
+
+### `handlePayment<TInput, TOutput>(handler: (ctx: PaymentContext<TInput>) => Promise<void>): void`
+
+Set payment handler for incoming requests.
+
+**Parameters**:
+```typescript
+interface PaymentContext<TInput> {
+  paymentId: string;             // Unique payment ID
+  txHash: string;                // On-chain transaction hash
+  amount: string;                // Amount paid (base units)
+  payerAddress: string;          // Payer wallet address
+  input: TInput;                 // Service input data
+  timestamp: Date;               // Payment timestamp
+  
+  // Delivery methods
+  deliver: <TOutput>(proof: DeliveryProof<TOutput>) => Promise<void>;
+  fail: (reason: string, retryable?: boolean) => Promise<void>;
+}
+```
+
+**Delivery Proof**:
+```typescript
+interface DeliveryProof<T> {
+  result: T;                     // Service output
+  proof?: string;                // Cryptographic proof (optional)
+  evidence?: Record<string, unknown>; // Additional evidence
+  latencyMs?: number;            // Execution latency
+}
+```
+
+**Example**:
+```typescript
+service.handlePayment<QuoteInput, QuoteOutput>(async (ctx) => {
+  const startTime = Date.now();
+  
+  try {
+    // Validate input
+    if (!ctx.input.pair || !ctx.input.side) {
+      return await ctx.fail('Invalid input: missing required fields', false);
+    }
+    
+    // Execute service logic
+    const quote = await aggregateQuotes({
+      pair: ctx.input.pair,
+      side: ctx.input.side,
+      leverage: ctx.input.leverage,
+      sizeUsd: ctx.input.sizeUsd
+    });
+    
+    // Deliver with proof
+    await ctx.deliver({
+      result: {
+        entryPrice: quote.entryPrice,
+        liquidationPrice: quote.liquidationPrice,
+        fundingRate: quote.fundingRate,
+        bestVenue: quote.bestVenue
+      },
+      proof: quote.signature, // Optional cryptographic proof
+      evidence: {
+        sources: quote.sources,
+        timestamp: Date.now()
+      },
+      latencyMs: Date.now() - startTime
+    });
+    
+    console.log('Quote delivered:', ctx.paymentId);
+    
+  } catch (error) {
+    // Report failure
+    await ctx.fail(
+      `Service error: ${error.message}`,
+      true // retryable
+    );
+  }
+});
+```
+
+---
+
+### `getReputation(): Promise<ProviderReputation>`
+
+Get current reputation score and metrics.
+
+**Returns**:
+```typescript
+interface ProviderReputation {
+  reputationScore: number;       // Score 0-100
+  successRate: number;           // Success rate percentage
+  totalDeliveries: number;       // Total successful deliveries
+  avgLatencyMs: number;          // Average latency
+  trend: 'improving' | 'stable' | 'declining';
+  rank?: number;                 // Rank among all providers
+  percentile?: number;           // Percentile ranking
+}
+```
+
+**Example**:
+```typescript
+const reputation = await service.getReputation();
+
+console.log('Reputation Score:', reputation.reputationScore);
+console.log('Success Rate:', reputation.successRate, '%');
+console.log('Avg Latency:', reputation.avgLatencyMs, 'ms');
+console.log('Trend:', reputation.trend);
+console.log('Rank:', reputation.rank, '(top', reputation.percentile, '%)');
+```
+
+---
+
+### `getMetrics(): Promise<ServiceMetrics>`
+
+Get detailed service performance metrics.
+
+**Returns**:
+```typescript
+interface ServiceMetrics {
+  timestamp: Date;
+  reputationScore: number;
+  successRate: number;
+  avgLatencyMs: number;
+  totalCalls: number;
+  totalPayments: number;
+  totalRevenue: string;          // Total revenue in base units
+}
+```
+
+**Example**:
+```typescript
+const metrics = await service.getMetrics();
+
+console.log('Total Calls:', metrics.totalCalls);
+console.log('Total Revenue:', (parseInt(metrics.totalRevenue) / 1e6).toFixed(2), 'USDC');
+console.log('Success Rate:', metrics.successRate, '%');
+```
+
+---
+
+### `deactivate(): Promise<void>`
+
+Deactivate the service (stop accepting new requests).
+
+**Example**:
+```typescript
+await service.deactivate();
+console.log('Service deactivated');
+```
+
+---
+
+## Reputation System
+
+### How Reputation is Calculated
+
+```
+reputationScore = (successRate * 0.7) + (latencyScore * 0.2) + (volumeScore * 0.1)
+
+where:
+  successRate = (successfulDeliveries / totalDeliveries) * 100
+  latencyScore = max(0, 100 - (avgLatencyMs / 10))
+  volumeScore = min(100, (totalDeliveries / 100) * 100)
+```
+
+### Reputation Updates
+
+Reputation updates after each delivery:
+
+```typescript
+// On successful delivery
+await ctx.deliver(proof);
+// → Increments successfulDeliveries
+// → Updates avgLatencyMs
+// → Recalculates reputationScore
+
+// On failure
+await ctx.fail(reason, retryable);
+// → Increments failedDeliveries
+// → Decreases reputationScore
+```
+
+### Reputation Trends
+
+```typescript
+interface ReputationTrend {
+  'improving': reputationScore increased > 5 points in last 7 days
+  'stable': reputationScore changed < 5 points in last 7 days
+  'declining': reputationScore decreased > 5 points in last 7 days
+}
+```
+
+---
+
+## Payment Events
+
+Listen to payment events for logging and analytics:
+
+```typescript
+service.on('payment:received', (event: PaymentEvent) => {
+  console.log('Payment received:', event.paymentId);
+  console.log('Amount:', event.amount);
+  console.log('Payer:', event.payerAddress);
+});
+
+service.on('payment:settled', (event: PaymentEvent) => {
+  console.log('Payment settled:', event.txHash);
+});
+
+service.on('payment:failed', (event: PaymentEvent) => {
+  console.error('Payment failed:', event.error);
+});
+```
+
+---
+
+## Advanced Usage
+
+### SLA Enforcement
+
+```typescript
+service.handlePayment<Input, Output>(async (ctx) => {
+  const startTime = Date.now();
+  const SLA_MAX_LATENCY = 5000; // 5 seconds
+  
+  try {
+    const result = await executeService(ctx.input);
+    const latency = Date.now() - startTime;
+    
+    if (latency > SLA_MAX_LATENCY) {
+      // SLA violated - refund
+      await ctx.fail(
+        `SLA violation: latency ${latency}ms exceeds ${SLA_MAX_LATENCY}ms`,
+        false
+      );
+      return;
+    }
+    
+    await ctx.deliver({
+      result,
+      latencyMs: latency,
+      evidence: { slaCompliant: true }
+    });
+  } catch (error) {
+    await ctx.fail(error.message, true);
+  }
+});
+```
+
+### Cryptographic Proof
+
+```typescript
+import { ethers } from 'ethers';
+
+service.handlePayment(async (ctx) => {
+  const result = await executeService(ctx.input);
+  
+  // Generate cryptographic proof
+  const message = JSON.stringify({
+    paymentId: ctx.paymentId,
+    result,
+    timestamp: Date.now()
+  });
+  
+  const signature = await wallet.signMessage(message);
+  
+  await ctx.deliver({
+    result,
+    proof: signature,
+    evidence: {
+      message,
+      signer: await wallet.getAddress()
+    }
+  });
+});
+```
+
+### Rate Limiting
+
+```typescript
+const rateLimiter = new Map<string, number>();
+const RATE_LIMIT = 10; // requests per minute
+
+service.handlePayment(async (ctx) => {
+  const count = rateLimiter.get(ctx.payerAddress) || 0;
+  
+  if (count >= RATE_LIMIT) {
+    return await ctx.fail(
+      'Rate limit exceeded: max 10 requests per minute',
+      true
+    );
+  }
+  
+  rateLimiter.set(ctx.payerAddress, count + 1);
+  setTimeout(() => {
+    rateLimiter.delete(ctx.payerAddress);
+  }, 60000);
+  
+  // Execute service...
+});
+```
+
+---
+
+## Best Practices
+
+### 1. Always Provide Proof
+
+```typescript
+// ❌ Bad: No proof
+await ctx.deliver({ result });
+
+// ✅ Good: With proof and evidence
+await ctx.deliver({
+  result,
+  proof: signature,
+  evidence: { sources, timestamp },
+  latencyMs: executionTime
+});
+```
+
+### 2. Handle Errors Gracefully
+
+```typescript
+try {
+  const result = await executeService(ctx.input);
+  await ctx.deliver({ result });
+} catch (error) {
+  await ctx.fail(
+    error.message,
+    error.code !== 'INVALID_INPUT' // retryable if not input error
+  );
+}
+```
+
+### 3. Track Latency
+
+```typescript
+const startTime = Date.now();
+const result = await executeService(ctx.input);
+const latencyMs = Date.now() - startTime;
+
+await ctx.deliver({ result, latencyMs });
+```
+
+### 4. Validate Input
+
+```typescript
+service.handlePayment(async (ctx) => {
+  // Validate against schema
+  if (!validateInput(ctx.input, inputSchema)) {
+    return await ctx.fail('Invalid input schema', false);
+  }
+  
+  // Execute service...
+});
+```
+
+---
+
+## Monetization
+
+### Pricing Strategies
+
+```typescript
+// Fixed price per call
+await service.register({
+  price: '10000' // 0.01 USDC
+});
+
+// Dynamic pricing based on input
+service.handlePayment(async (ctx) => {
+  const basePrice = 10000;
+  const complexityMultiplier = ctx.input.leverage / 10;
+  const actualPrice = basePrice * complexityMultiplier;
+  
+  // Verify payment amount
+  if (parseInt(ctx.amount) < actualPrice) {
+    return await ctx.fail('Insufficient payment', false);
+  }
+  
+  // Execute service...
+});
+```
+
+### Revenue Tracking
+
+```typescript
+const metrics = await service.getMetrics();
+const revenueUSDC = parseInt(metrics.totalRevenue) / 1e6;
+
+console.log('Total Revenue:', revenueUSDC.toFixed(2), 'USDC');
+console.log('Avg Revenue per Call:', (revenueUSDC / metrics.totalCalls).toFixed(4), 'USDC');
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Agent SDK"
+    icon="robot"
+    href="/sdk/agent-sdk"
+  >
+    Build agents that use your service
+  </Card>
+  <Card
+    title="Session Management"
+    icon="wallet"
+    href="/sdk/session-management"
+  >
+    Accept session-based payments
+  </Card>
+  <Card
+    title="x402 Protocol"
+    icon="credit-card"
+    href="/essentials/x402-protocol"
+  >
+    Understanding payment flow
+  </Card>
+  <Card
+    title="Build Service Guide"
+    icon="rocket"
+    href="/guides/build-service"
+  >
+    Complete tutorial
+  </Card>
+</CardGroup>

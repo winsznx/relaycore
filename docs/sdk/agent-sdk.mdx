@@ -1,29 +1,581 @@
 ---
-title: Agent SDK
-description: Build autonomous agents
+title: RelayAgent SDK
+description: Build autonomous AI agents that discover services, make decisions, and execute workflows
+---
+
+## Overview
+
+The `RelayAgent` class enables AI agents to:
+- **Discover services** with reputation-based filtering
+- **Execute paid operations** with automatic x402 payment
+- **Build workflows** with fallbacks and retries
+- **Track outcomes** for learning and optimization
+
+**Design Philosophy**: Decision abstraction, not CRUD. Agents focus on **what** to do, not **how** to do it.
+
 ---
 
 ## Installation
 
 ```bash
-npm install @relaycore/sdk
+npm install @relaycore/sdk ethers
 ```
 
-## Basic Usage
+---
+
+## Quick Start
 
 ```typescript
-import { createAgent } from "@relaycore/sdk";
+import { RelayAgent } from '@relaycore/sdk';
+import { ethers } from 'ethers';
 
-const agent = createAgent({
-  wallet: signer,
-  apiKey: "rc_test_...",
-  network: "cronos-testnet"
+// Initialize agent
+const agent = new RelayAgent({
+  wallet: new ethers.Wallet(privateKey, provider),
+  apiKey: 'rc_test_...',
+  network: 'cronos-testnet',
+  apiUrl: 'https://api.relaycore.xyz'
 });
 
-const service = await agent.selectService({
-  category: "data.prices",
-  constraints: { minReputation: 90 }
+// Discover services
+const services = await agent.discoverServices({
+  category: 'trading',
+  constraints: {
+    minReputation: 90,
+    maxPrice: '1000000', // 1 USDC
+    maxLatency: 5000
+  }
 });
 
-const result = await agent.execute(service, { pair: "BTC/USD" });
+// Execute service with automatic payment
+const result = await agent.execute(services[0].id, {
+  pair: 'BTC-USD',
+  side: 'long',
+  leverage: 10,
+  sizeUsd: 1000
+});
+
+console.log(result.data); // Quote data
+console.log(result.payment); // { id, txHash, amount }
 ```
+
+---
+
+## Core Methods
+
+### `constructor(config: AgentConfig)`
+
+Initialize the agent with wallet and configuration.
+
+**Parameters**:
+```typescript
+interface AgentConfig {
+  wallet: ethers.Signer | string;  // Wallet for signing payments
+  apiKey: string;                   // RelayCore API key
+  network?: Network;                // 'cronos-testnet' | 'cronos-mainnet'
+  apiUrl?: string;                  // API endpoint (default: production)
+}
+```
+
+**Example**:
+```typescript
+const agent = new RelayAgent({
+  wallet: signer,
+  apiKey: process.env.RELAYCORE_API_KEY,
+  network: 'cronos-testnet'
+});
+```
+
+---
+
+### `discoverServices(criteria: ServiceCriteria): Promise<SelectedService[]>`
+
+Find services matching criteria with reputation-based scoring.
+
+**Parameters**:
+```typescript
+interface ServiceCriteria {
+  category?: string;              // e.g., 'trading', 'data', 'oracle'
+  inputType?: string;             // Expected input format
+  outputType?: string;            // Expected output format
+  tags?: string[];                // Service tags
+  capabilities?: string[];        // Required capabilities
+  constraints?: TrustPolicy;      // Trust constraints
+}
+
+interface TrustPolicy {
+  minReputation?: number;         // Minimum reputation score (0-100)
+  maxLatency?: number;            // Maximum latency in ms
+  maxPrice?: number;              // Maximum price in base units
+  verifiedOnly?: boolean;         // Only verified services
+  preferredProviders?: string[];  // Preferred provider addresses
+  blacklistedProviders?: string[]; // Excluded provider addresses
+}
+```
+
+**Returns**:
+```typescript
+interface SelectedService {
+  id: string;
+  name: string;
+  endpoint: string;
+  price: string;                  // In base units
+  provider: string;               // Provider address
+  reputation: number;             // Score 0-100
+  latency: number;                // Avg latency in ms
+  selectionReason: string;        // Why this service was selected
+  scoreBreakdown: {
+    reputation: number;
+    latency: number;
+    price: number;
+    total: number;
+  };
+}
+```
+
+**Example**:
+```typescript
+const services = await agent.discoverServices({
+  category: 'oracle',
+  tags: ['pyth', 'price-feed'],
+  constraints: {
+    minReputation: 85,
+    maxLatency: 3000,
+    maxPrice: '500000' // 0.5 USDC
+  }
+});
+
+// Services are sorted by composite score
+console.log(services[0].selectionReason);
+// "Highest composite score: reputation (95), low latency (1200ms), competitive price (0.3 USDC)"
+```
+
+**Scoring Algorithm**:
+```
+compositeScore = (reputation * 0.5) + (latencyScore * 0.3) + (priceScore * 0.2)
+
+where:
+  latencyScore = max(0, 100 - (latency / 100))
+  priceScore = max(0, 100 - (price / maxPrice * 100))
+```
+
+---
+
+### `execute<T>(serviceId: string, input: unknown): Promise<ExecutionResult<T>>`
+
+Execute a service with automatic x402 payment handling.
+
+**Parameters**:
+- `serviceId`: Service identifier from `discoverServices`
+- `input`: Service-specific input data
+
+**Returns**:
+```typescript
+interface ExecutionResult<T> {
+  success: boolean;
+  data?: T;                       // Service response
+  error?: ExecutionError;         // Error if failed
+  payment?: {
+    id: string;                   // Payment ID
+    txHash: string;               // Transaction hash
+    amount: string;               // Amount paid (base units)
+  };
+  metrics: {
+    totalMs: number;              // Total execution time
+    paymentMs?: number;           // Payment settlement time
+    serviceMs?: number;           // Service execution time
+  };
+}
+```
+
+**Example**:
+```typescript
+const result = await agent.execute<QuoteData>('service_abc123', {
+  pair: 'ETH-USD',
+  side: 'short',
+  leverage: 5,
+  sizeUsd: 500
+});
+
+if (result.success) {
+  console.log('Quote:', result.data);
+  console.log('Paid:', result.payment.amount, 'via', result.payment.txHash);
+  console.log('Execution time:', result.metrics.totalMs, 'ms');
+} else {
+  console.error('Error:', result.error.message);
+  if (result.error.retryable) {
+    console.log('Retry after:', result.error.retryAfterMs, 'ms');
+  }
+}
+```
+
+**Payment Flow**:
+1. Agent calls service endpoint
+2. If 402 response: generate EIP-3009 signature
+3. Settle payment via Facilitator
+4. Retry request with payment ID
+5. Return service response
+
+---
+
+### `executeWorkflow<T>(steps: WorkflowStep[]): Promise<WorkflowResult<T>>`
+
+Execute multi-step workflow with fallbacks and retries.
+
+**Parameters**:
+```typescript
+interface WorkflowStep<TInput, TOutput> {
+  name: string;
+  service?: SelectedService;      // Pre-selected service
+  serviceId?: string;             // Service ID to use
+  criteria?: ServiceCriteria;     // Discover service dynamically
+  transform?: (input: TInput) => TOutput | Promise<TOutput>;
+  timeout?: number;               // Step timeout in ms
+  retries?: number;               // Retry attempts
+  fallback?: WorkflowStep<TInput, TOutput>; // Fallback step
+  onSuccess?: (result: TOutput) => void | Promise<void>;
+  onFailure?: (error: ExecutionError) => void | Promise<void>;
+}
+```
+
+**Returns**:
+```typescript
+interface WorkflowResult<T> {
+  success: boolean;
+  data?: T;
+  stepResults: Array<{
+    stepName: string;
+    success: boolean;
+    data?: unknown;
+    error?: ExecutionError;
+    durationMs: number;
+  }>;
+  totalMs: number;
+  completedSteps: number;
+  failedSteps: number;
+}
+```
+
+**Example**:
+```typescript
+const workflow = await agent.executeWorkflow([
+  {
+    name: 'get_price',
+    criteria: { category: 'oracle', tags: ['pyth'] },
+    timeout: 5000,
+    retries: 2
+  },
+  {
+    name: 'get_quote',
+    serviceId: 'perpai_service',
+    transform: (priceData) => ({
+      pair: 'BTC-USD',
+      entryPrice: priceData.price,
+      leverage: 10
+    }),
+    fallback: {
+      name: 'get_quote_backup',
+      criteria: { category: 'trading', minReputation: 80 }
+    }
+  },
+  {
+    name: 'execute_trade',
+    serviceId: 'dex_router',
+    onSuccess: async (result) => {
+      console.log('Trade executed:', result.txHash);
+    },
+    onFailure: async (error) => {
+      console.error('Trade failed:', error.message);
+    }
+  }
+]);
+
+console.log('Workflow completed:', workflow.success);
+console.log('Steps:', workflow.completedSteps, '/', workflow.stepResults.length);
+```
+
+---
+
+### `getMemory(): AgentMemory`
+
+Access execution history and statistics for learning.
+
+**Returns**:
+```typescript
+interface AgentMemory {
+  totalCalls: number;
+  successRate: number;
+  avgLatency: number;
+  
+  record(outcome: OutcomeRecord): void;
+  getHistory(serviceId?: string): OutcomeRecord[];
+  getStats(): { totalCalls: number; successRate: number; avgLatency: number };
+  clear(): void;
+}
+
+interface OutcomeRecord {
+  timestamp: Date;
+  serviceId: string;
+  success: boolean;
+  latencyMs: number;
+  paymentAmount?: string;
+  error?: ExecutionError;
+}
+```
+
+**Example**:
+```typescript
+const memory = agent.getMemory();
+
+// Get overall stats
+console.log('Success rate:', memory.successRate, '%');
+console.log('Avg latency:', memory.avgLatency, 'ms');
+
+// Get history for specific service
+const serviceHistory = memory.getHistory('service_abc123');
+console.log('Service calls:', serviceHistory.length);
+console.log('Service success rate:', 
+  serviceHistory.filter(r => r.success).length / serviceHistory.length * 100
+);
+
+// Record custom outcome
+memory.record({
+  timestamp: new Date(),
+  serviceId: 'custom_service',
+  success: true,
+  latencyMs: 1200,
+  paymentAmount: '10000'
+});
+```
+
+---
+
+## Error Handling
+
+### Error Codes
+
+```typescript
+enum ErrorCode {
+  INSUFFICIENT_BALANCE = 'INSUFFICIENT_BALANCE',
+  PAYMENT_FAILED = 'PAYMENT_FAILED',
+  SERVICE_UNAVAILABLE = 'SERVICE_UNAVAILABLE',
+  SERVICE_TIMEOUT = 'SERVICE_TIMEOUT',
+  SERVICE_ERROR = 'SERVICE_ERROR',
+  INVALID_INPUT = 'INVALID_INPUT',
+  INVALID_OUTPUT = 'INVALID_OUTPUT',
+  NETWORK_ERROR = 'NETWORK_ERROR',
+  UNAUTHORIZED = 'UNAUTHORIZED',
+  RATE_LIMITED = 'RATE_LIMITED',
+  UNKNOWN = 'UNKNOWN'
+}
+```
+
+### Error Structure
+
+```typescript
+interface ExecutionError {
+  code: ErrorCode;
+  message: string;
+  retryable: boolean;
+  retryAfterMs?: number;
+  details?: unknown;
+}
+```
+
+### Handling Errors
+
+```typescript
+const result = await agent.execute(serviceId, input);
+
+if (!result.success) {
+  switch (result.error.code) {
+    case 'INSUFFICIENT_BALANCE':
+      console.log('Fund wallet with USDC');
+      break;
+    
+    case 'SERVICE_TIMEOUT':
+      if (result.error.retryable) {
+        await new Promise(r => setTimeout(r, result.error.retryAfterMs));
+        // Retry execution
+      }
+      break;
+    
+    case 'RATE_LIMITED':
+      console.log('Wait', result.error.retryAfterMs, 'ms before retry');
+      break;
+    
+    default:
+      console.error('Unhandled error:', result.error.message);
+  }
+}
+```
+
+---
+
+## Advanced Usage
+
+### Custom Trust Policy
+
+```typescript
+const conservativePolicy: TrustPolicy = {
+  minReputation: 95,
+  maxLatency: 2000,
+  maxPrice: '500000',
+  verifiedOnly: true,
+  preferredProviders: [
+    '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+    '0x1234567890abcdef1234567890abcdef12345678'
+  ]
+};
+
+const services = await agent.discoverServices({
+  category: 'oracle',
+  constraints: conservativePolicy
+});
+```
+
+### Workflow with Conditional Logic
+
+```typescript
+const workflow = await agent.executeWorkflow([
+  {
+    name: 'check_balance',
+    serviceId: 'balance_checker',
+    onSuccess: async (balance) => {
+      if (balance.usdc < 100) {
+        throw new Error('Insufficient balance for workflow');
+      }
+    }
+  },
+  {
+    name: 'get_market_data',
+    criteria: { category: 'data', tags: ['real-time'] },
+    transform: (data) => ({
+      shouldTrade: data.volatility < 0.05,
+      marketData: data
+    })
+  },
+  {
+    name: 'execute_trade',
+    serviceId: 'dex_router',
+    // Only executes if previous step returned shouldTrade: true
+    transform: (prev) => prev.shouldTrade ? prev.marketData : null
+  }
+]);
+```
+
+### Memory-Based Service Selection
+
+```typescript
+const memory = agent.getMemory();
+
+// Prefer services with good historical performance
+const services = await agent.discoverServices({
+  category: 'trading',
+  constraints: {
+    minReputation: 85,
+    preferredProviders: memory.getHistory()
+      .filter(r => r.success && r.latencyMs < 2000)
+      .map(r => r.serviceId)
+      .slice(0, 3) // Top 3 performers
+  }
+});
+```
+
+---
+
+## Best Practices
+
+### 1. Always Handle Errors
+
+```typescript
+try {
+  const result = await agent.execute(serviceId, input);
+  if (!result.success) {
+    // Handle error
+  }
+} catch (error) {
+  // Handle exception
+}
+```
+
+### 2. Use Workflows for Complex Operations
+
+```typescript
+// ❌ Bad: Manual orchestration
+const price = await agent.execute('oracle', {});
+const quote = await agent.execute('trading', { price });
+const trade = await agent.execute('dex', { quote });
+
+// ✅ Good: Workflow with automatic error handling
+const result = await agent.executeWorkflow([
+  { name: 'get_price', serviceId: 'oracle' },
+  { name: 'get_quote', serviceId: 'trading', transform: (price) => ({ price }) },
+  { name: 'execute_trade', serviceId: 'dex', retries: 2 }
+]);
+```
+
+### 3. Track Outcomes for Learning
+
+```typescript
+const result = await agent.execute(serviceId, input);
+
+agent.getMemory().record({
+  timestamp: new Date(),
+  serviceId,
+  success: result.success,
+  latencyMs: result.metrics.totalMs,
+  paymentAmount: result.payment?.amount
+});
+```
+
+### 4. Use Trust Policies
+
+```typescript
+// Define once, reuse everywhere
+const productionPolicy: TrustPolicy = {
+  minReputation: 90,
+  maxLatency: 5000,
+  verifiedOnly: true
+};
+
+const services = await agent.discoverServices({
+  category: 'any',
+  constraints: productionPolicy
+});
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Service SDK"
+    icon="server"
+    href="/sdk/service-sdk"
+  >
+    Build and monetize services
+  </Card>
+  <Card
+    title="Session Management"
+    icon="wallet"
+    href="/sdk/session-management"
+  >
+    Use session budgets for efficiency
+  </Card>
+  <Card
+    title="Error Handling"
+    icon="triangle-exclamation"
+    href="/sdk/error-handling"
+  >
+    Robust error handling patterns
+  </Card>
+  <Card
+    title="First Payment Guide"
+    icon="rocket"
+    href="/guides/first-payment"
+  >
+    Complete tutorial with code
+  </Card>
+</CardGroup>
