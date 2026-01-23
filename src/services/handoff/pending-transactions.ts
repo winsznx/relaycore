@@ -352,7 +352,7 @@ export const pendingTransactionStore = new PendingTransactionStore();
  * Generate signing URL for a pending transaction
  */
 export function getSigningUrl(transactionId: string, baseUrl?: string): string {
-    const base = baseUrl || process.env.RELAY_CORE_URL || 'http://localhost:4000';
+    const base = baseUrl || process.env.RELAY_CORE_URL || 'https://api.relaycore.xyz';
     return `${base}/sign/${transactionId}`;
 }
 

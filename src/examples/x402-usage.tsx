@@ -22,7 +22,7 @@ async function example1_X402Client() {
     const client = new X402Client(signer, { network: 'testnet' });
 
     // Make request - payment handled automatically!
-    const response = await client.fetch('http://localhost:4001/api/trade/quote', {
+    const response = await client.fetch(`${import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz'}/api/trade/quote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -47,7 +47,7 @@ async function example2_FetchWithPayment() {
 
     // Fetch with automatic payment handling
     const response = await fetchWithPayment(
-        'http://localhost:4001/api/trade/quote',
+        `${import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz'}/api/trade/quote`,
         {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -75,7 +75,7 @@ async function example3_ManualPayment() {
     const signer = await provider.getSigner();
 
     // Make initial request
-    const response = await fetch('http://localhost:4001/api/trade/quote', {
+    const response = await fetch(`${import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz'}/api/trade/quote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -99,7 +99,7 @@ async function example3_ManualPayment() {
 
         if (paymentResult.success) {
             // Retry with payment header
-            const retryResponse = await fetch('http://localhost:4001/api/trade/quote', {
+            const retryResponse = await fetch(`${import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz'}/api/trade/quote`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -138,7 +138,7 @@ function TradingComponent() {
         }
 
         try {
-            const response = await x402Client.fetch('http://localhost:4001/api/trade/quote', {
+            const response = await x402Client.fetch(`${import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz'}/api/trade/quote`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

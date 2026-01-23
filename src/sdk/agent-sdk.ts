@@ -21,7 +21,7 @@ export interface SDKConfig {
     apiKey?: string;           // API key for authenticated access
     walletAddress: string;      // Agent's wallet address
     rpcUrl?: string;            // Cronos RPC URL
-    baseUrl?: string;           // Relay Core API URL (default: localhost:4000)
+    baseUrl?: string;           // Relay Core API URL (default: https://api.relaycore.xyz)
     supabaseUrl?: string;
     supabaseKey?: string;
     contracts?: {
@@ -66,7 +66,7 @@ export class AgentSDK {
     constructor(config: SDKConfig) {
         this.config = {
             rpcUrl: 'https://evm-t3.cronos.org',
-            baseUrl: 'http://localhost:4000',
+            baseUrl: 'https://api.relaycore.xyz',
             ...config,
         };
 
@@ -109,7 +109,7 @@ export class AgentSDK {
         });
 
         // Use base URL for IPFS upload proxy
-        const ipfsUri = await uploadAgentMetadataToIPFS(metadata, this.config.baseUrl || 'http://localhost:4000');
+        const ipfsUri = await uploadAgentMetadataToIPFS(metadata, this.config.baseUrl || 'https://api.relaycore.xyz');
 
         // Register on-chain
         const { agentId, txHash } = await registerAgentOnChain(

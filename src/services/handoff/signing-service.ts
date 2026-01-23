@@ -78,7 +78,7 @@ export class SigningService {
     private baseUrl: string;
 
     constructor(baseUrl?: string) {
-        this.baseUrl = baseUrl || process.env.RELAY_CORE_URL || 'http://localhost:4000';
+        this.baseUrl = baseUrl || process.env.RELAY_CORE_URL || 'https://api.relaycore.xyz';
     }
 
     /**

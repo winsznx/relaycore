@@ -55,7 +55,7 @@ export default function NetworkGraph({ className = '', isDark = true }: NetworkG
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const response = await fetch('http://localhost:4000/graphql', {
+                const response = await fetch(`${import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz'}/graphql`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

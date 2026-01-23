@@ -11,7 +11,7 @@ import { supabase, isSupabaseAvailable } from '../../lib/supabase';
 
 // Default owner address for platform-hosted agents
 const PLATFORM_OWNER_ADDRESS = process.env.PAYMENT_RECIPIENT_ADDRESS || '0x0000000000000000000000000000000000000001';
-const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:4001';
+const API_BASE_URL = process.env.API_BASE_URL || 'https://api.relaycore.xyz';
 
 // All agents to register as services
 const PLATFORM_AGENTS = [

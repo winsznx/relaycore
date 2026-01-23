@@ -261,7 +261,7 @@ export const generateHandoffUrlTool = tool(
 
         try {
             // Generate URL for wallet signing
-            const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
+            const baseUrl = process.env.VITE_APP_URL || 'https://relaycore.xyz';
             const handoffUrl = `${baseUrl}/sign/${action}?${new URLSearchParams(params as Record<string, string>).toString()}`;
 
             return {

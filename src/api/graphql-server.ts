@@ -286,7 +286,7 @@ async function startServers() {
     });
 
     app.listen(4001, () => {
-        console.log(`x402 Settlement Endpoint at http://localhost:4001/api/pay`);
+        console.log(`x402 Settlement Endpoint at ${process.env.PUBLIC_HOST || 'https://api.relaycore.xyz'}/api/pay`);
     });
 
     // 3. Start Indexers (PerpAI, Temporal, Graph)

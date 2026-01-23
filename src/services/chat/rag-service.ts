@@ -51,7 +51,7 @@ export class RAGService {
         try {
             const chromaConfig = this.chromaClient
                 ? { client: this.chromaClient }
-                : { url: process.env.CHROMA_URL || 'http://localhost:8000' };
+                : { url: process.env.CHROMA_URL || 'https://chroma.relaycore.xyz' };
 
             this.vectorStore = await Chroma.fromExistingCollection(
                 this.embeddings,
@@ -100,7 +100,7 @@ export class RAGService {
             // Create or update vector store with appropriate config
             const chromaConfig = this.chromaClient
                 ? { client: this.chromaClient }
-                : { url: process.env.CHROMA_URL || 'http://localhost:8000' };
+                : { url: process.env.CHROMA_URL || 'https://chroma.relaycore.xyz' };
 
             this.vectorStore = await Chroma.fromDocuments(
                 documents,

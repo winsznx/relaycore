@@ -1,45 +1,45 @@
 export default function DocsTradeExample() {
-    return (
-        <div className="space-y-8">
-            <div>
-                <h1 className="text-4xl font-bold text-gray-900 mb-4">Execute a Trade Example</h1>
-                <p className="text-lg text-gray-600">
-                    Complete walkthrough of executing a leveraged trade with gasless payments.
-                </p>
-            </div>
+  return (
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-4xl font-bold text-gray-900 mb-4">Execute a Trade Example</h1>
+        <p className="text-lg text-gray-600">
+          Complete walkthrough of executing a leveraged trade with gasless payments.
+        </p>
+      </div>
 
-            <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-gray-900">Step 1: Get Trade Quote</h2>
-                <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-x-auto">
-                    <code className="text-sm text-gray-800">{`async function getTradeQuote() {
-  const response = await fetch('http://localhost:4001/api/trade/quote', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      pair: 'BTC-USD',
-      side: 'long',
-      leverage: 5,
-      sizeUsd: 1000,
-      maxSlippage: 0.5
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-gray-900">Step 1: Get Trade Quote</h2>
+        <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-x-auto">
+          <code className="text-sm text-gray-800">{`async function getTradeQuote() {
+  const response = await fetch(`${import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz'}/api/trade/quote`, {
+              method: 'POST',
+            headers: {'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              pair: 'BTC-USD',
+            side: 'long',
+            leverage: 5,
+            sizeUsd: 1000,
+            maxSlippage: 0.5
     })
   });
 
-  if (response.status === 402) {
+            if (response.status === 402) {
     const paymentReq = await response.json();
-    // Handle payment (see Step 2)
-    return await handlePayment(paymentReq);
+            // Handle payment (see Step 2)
+            return await handlePayment(paymentReq);
   }
 
-  const quote = await response.json();
-  return quote;
+            const quote = await response.json();
+            return quote;
 }`}</code>
-                </pre>
-            </div>
+        </pre>
+      </div>
 
-            <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-gray-900">Step 2: Sign Payment Authorization</h2>
-                <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-x-auto">
-                    <code className="text-sm text-gray-800">{`import { ethers } from 'ethers';
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-gray-900">Step 2: Sign Payment Authorization</h2>
+        <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-x-auto">
+          <code className="text-sm text-gray-800">{`import { ethers } from 'ethers';
 
 async function handlePayment(paymentReq) {
   const provider = new ethers.BrowserProvider(window.ethereum);
@@ -110,13 +110,13 @@ async function handlePayment(paymentReq) {
   
   return await retryResp.json();
 }`}</code>
-                </pre>
-            </div>
+        </pre>
+      </div>
 
-            <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-gray-900">Step 3: Execute Trade</h2>
-                <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-x-auto">
-                    <code className="text-sm text-gray-800">{`async function executeTrade(quote) {
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-gray-900">Step 3: Execute Trade</h2>
+        <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-x-auto">
+          <code className="text-sm text-gray-800">{`async function executeTrade(quote) {
   const userAddress = await signer.getAddress();
   
   const response = await fetch('http://localhost:4001/api/trade/execute', {
@@ -143,13 +143,13 @@ async function handlePayment(paymentReq) {
   console.log('Trade executed:', result);
   return result;
 }`}</code>
-                </pre>
-            </div>
+        </pre>
+      </div>
 
-            <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-gray-900">Complete Example</h2>
-                <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-x-auto">
-                    <code className="text-sm text-gray-800">{`async function openLongPosition() {
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-gray-900">Complete Example</h2>
+        <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-x-auto">
+          <code className="text-sm text-gray-800">{`async function openLongPosition() {
   try {
     // 1. Get quote (costs 0.01 USDC)
     console.log('Getting trade quote...');
@@ -189,13 +189,13 @@ async function handlePayment(paymentReq) {
 
 // Execute
 openLongPosition();`}</code>
-                </pre>
-            </div>
+        </pre>
+      </div>
 
-            <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-gray-900">Monitor Position</h2>
-                <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-x-auto">
-                    <code className="text-sm text-gray-800">{`// Subscribe to WebSocket for real-time updates
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-gray-900">Monitor Position</h2>
+        <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-x-auto">
+          <code className="text-sm text-gray-800">{`// Subscribe to WebSocket for real-time updates
 const ws = new WebSocket('ws://localhost:4000/ws');
 
 ws.onopen = () => {
@@ -217,8 +217,8 @@ ws.onmessage = (event) => {
     }
   }
 };`}</code>
-                </pre>
-            </div>
-        </div>
-    );
+        </pre>
+      </div>
+    </div>
+  );
 }

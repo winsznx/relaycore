@@ -1,8 +1,8 @@
 import type { CronosNetwork } from '@crypto.com/facilitator-client';
 import { supabase } from '../../lib/supabase';
 
-const PORT = process.env.PORT || 4001;
-const HOST = process.env.PUBLIC_HOST || `http://localhost:${PORT}`;
+// PORT variable removed (unused)
+const HOST = process.env.PUBLIC_HOST || 'https://api.relaycore.xyz';
 const NETWORK = (process.env.CRONOS_NETWORK ?? 'cronos-testnet') as CronosNetwork;
 
 interface AgentCardResource {

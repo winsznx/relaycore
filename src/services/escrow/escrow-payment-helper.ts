@@ -32,7 +32,7 @@ export class EscrowPaymentHelper {
     private apiUrl: string;
 
     constructor(apiUrl?: string) {
-        this.apiUrl = apiUrl || process.env.RELAY_CORE_API_URL || 'http://localhost:4001';
+        this.apiUrl = apiUrl || process.env.RELAY_CORE_API_URL || 'https://api.relaycore.xyz';
     }
 
     /**
