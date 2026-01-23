@@ -71,3 +71,7 @@ ehthumbs.db
 .sentryclirc
 src/sdk/.npmrc
 packages/cli/.npmrc
+
+.env.bak
+.env.example.bak
+guide.md
