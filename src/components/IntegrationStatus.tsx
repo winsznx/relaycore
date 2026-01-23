@@ -77,8 +77,9 @@ export function IntegrationStatus() {
     async function checkGraphQL(): Promise<boolean> {
         const start = Date.now();
         try {
-            // Use relative path for proxy support
-            const response = await fetch('/graphql', {
+            // Use environment variable for GraphQL endpoint or fallback
+            const graphqlUrl = import.meta.env.VITE_GRAPHQL_URL || 'https://api.relaycore.xyz/graphql';
+            const response = await fetch(graphqlUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -99,7 +100,8 @@ export function IntegrationStatus() {
     async function checkCronosRPC() {
         const start = Date.now();
         try {
-            const response = await fetch('/api/health/rpc');
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            const response = await fetch(`${apiUrl}/api/health/rpc`);
             const latency = Date.now() - start;
             const data = await response.json();
             updateIntegration('Cronos RPC', data.status === 'connected' ? 'connected' : 'disconnected', latency);

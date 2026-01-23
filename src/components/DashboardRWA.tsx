@@ -71,7 +71,9 @@ export function DashboardRWA() {
     const fetchRWAs = async () => {
         try {
             setLoading(true);
-            const response = await fetch('/api/rwa/state-machines');
+            setLoading(true);
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            const response = await fetch(`${apiUrl}/api/rwa/state-machines`);
             if (response.ok) {
                 const data = await response.json();
                 setRwas(data.stateMachines || []);
@@ -94,7 +96,8 @@ export function DashboardRWA() {
                 metadata = { description: newRWAMetadata };
             }
 
-            const response = await fetch('/api/rwa/state-machine/create', {
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            const response = await fetch(`${apiUrl}/api/rwa/state-machine/create`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -130,7 +133,8 @@ export function DashboardRWA() {
                 input = { raw: executeForm.input };
             }
 
-            const response = await fetch('/api/rwa/execute', {
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            const response = await fetch(`${apiUrl}/api/rwa/execute`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -186,7 +190,8 @@ export function DashboardRWA() {
                 result = { raw: settleForm.result };
             }
 
-            const response = await fetch('/api/rwa/settle', {
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            const response = await fetch(`${apiUrl}/api/rwa/settle`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

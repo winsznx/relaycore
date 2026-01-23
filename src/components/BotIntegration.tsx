@@ -69,7 +69,8 @@ export function BotIntegration() {
 
     const fetchLinkedAccounts = async () => {
         try {
-            const response = await fetch(`/api/bot/accounts?wallet=${address}`);
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            const response = await fetch(`${apiUrl}/api/bot/accounts?wallet=${address}`);
             if (response.ok) {
                 const data = await response.json();
                 setLinkedAccounts(data.accounts || []);
@@ -81,7 +82,8 @@ export function BotIntegration() {
 
     const fetchNotificationSettings = async () => {
         try {
-            const response = await fetch(`/api/user/profile?wallet=${address}`);
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            const response = await fetch(`${apiUrl}/api/user/profile?wallet=${address}`);
             if (response.ok) {
                 const data = await response.json();
                 if (data && data.notifications) {
@@ -104,7 +106,8 @@ export function BotIntegration() {
         setNotifications(newSettings); // Optimistic update
 
         try {
-            await fetch('/api/user/profile', {
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            await fetch(`${apiUrl}/api/user/profile`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -121,7 +124,8 @@ export function BotIntegration() {
     const generateLinkCode = async () => {
         setLoading(true);
         try {
-            const response = await fetch('/api/bot/link', {
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            const response = await fetch(`${apiUrl}/api/bot/link`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ walletAddress: address }),
@@ -143,7 +147,8 @@ export function BotIntegration() {
 
     const unlinkAccount = async (accountId: string) => {
         try {
-            const response = await fetch(`/api/bot/accounts/${accountId}`, {
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            const response = await fetch(`${apiUrl}/api/bot/accounts/${accountId}`, {
                 method: 'DELETE',
             });
 
@@ -477,6 +482,7 @@ function NotificationToggle({ label, description, checked, onChange }: Notificat
             ) : (
                 <BellOff className="h-5 w-5 text-gray-400" />
             )}
+
         </div>
     );
 }

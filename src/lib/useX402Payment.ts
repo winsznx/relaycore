@@ -71,9 +71,10 @@ export function useX402Payment() {
             const paymentId = `pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
             // Submit to backend for settlement
-            console.log('Submitting payment to /api/pay...');
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            console.log('Submitting payment to', `${apiUrl}/api/pay`);
 
-            const response = await fetch('/api/pay', {
+            const response = await fetch(`${apiUrl}/api/pay`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

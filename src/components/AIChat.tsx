@@ -67,7 +67,8 @@ export function AIChat() {
 
         try {
             // Call Claude API endpoint
-            const response = await fetch('/api/chat', {
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            const response = await fetch(`${apiUrl}/api/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

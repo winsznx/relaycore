@@ -49,7 +49,8 @@ export function CreateSessionModal({ isOpen, onClose, onSuccess }: CreateSession
         setLoading(true);
         try {
             // Step 1: Create session (pending_payment status)
-            const response = await fetch('/api/sessions/create', {
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            const response = await fetch(`${apiUrl}/api/sessions/create`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -173,7 +174,8 @@ export function CreateSessionModal({ isOpen, onClose, onSuccess }: CreateSession
                     );
 
                     // Send signed authorization to backend for Facilitator settlement
-                    const settleResponse = await fetch(`/api/sessions/${sessionId}/settle-x402`, {
+                    const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+                    const settleResponse = await fetch(`${apiUrl}/api/sessions/${sessionId}/settle-x402`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -215,7 +217,8 @@ export function CreateSessionModal({ isOpen, onClose, onSuccess }: CreateSession
             }
 
             // Activate session with transaction hash
-            const activateResponse = await fetch(`/api/sessions/${sessionId}/activate`, {
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            const activateResponse = await fetch(`${apiUrl}/api/sessions/${sessionId}/activate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
