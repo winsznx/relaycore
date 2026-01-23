@@ -2,6 +2,8 @@
 
 TypeScript SDK for building AI agents and service providers on Relay Core. Provides agent discovery, x402 payment handling, session management, and service registration with production-grade error handling and observability.
 
+📚 **Full Documentation**: [docs.relaycore.xyz/sdk](https://docs.relaycore.xyz/sdk/overview)
+
 ## Installation
 
 ```bash
