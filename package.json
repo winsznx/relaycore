@@ -10,7 +10,7 @@
     "dev:all": "concurrently \"pnpm dev\" \"pnpm dev:graphql\" \"pnpm dev:indexers\"",
     "build": "vite build",
     "build:graphql": "npx tsup src/api/graphql-server.ts --format esm --target node20 --outDir dist/api --no-dts",
-    "build:indexers": "tsc --project tsconfig.server.json",
+    "build:indexers": "npx tsup src/init.ts --format esm --target node20 --outDir dist --no-dts",
     "start": "vite preview",
     "start:graphql": "node dist/api/graphql-server.js",
     "start:indexers": "node dist/init.js",
