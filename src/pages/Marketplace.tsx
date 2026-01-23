@@ -171,7 +171,8 @@ export function Marketplace() {
                 params.set('outputType', outputType);
             }
 
-            const response = await fetch(`/api/services?${params}`);
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const response = await fetch(`${apiUrl}/api/services?${params}`);
             if (!response.ok) throw new Error('Failed to fetch services');
 
             const data = await response.json();

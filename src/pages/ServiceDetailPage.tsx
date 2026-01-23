@@ -67,7 +67,8 @@ export function ServiceDetailPage() {
             }
 
             // Call the service endpoint
-            const response = await fetch(`/api/services/${selectedService.id}/call`, {
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const response = await fetch(`${apiUrl}/api/services/${selectedService.id}/call`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
@@ -174,21 +175,19 @@ export function ServiceDetailPage() {
                                             <div className="flex gap-2">
                                                 <button
                                                     onClick={() => setUseSession(true)}
-                                                    className={`flex-1 py-2 px-4 rounded-lg border transition ${
-                                                        useSession
-                                                            ? 'bg-orange-50 border-orange-500 text-orange-700'
-                                                            : 'border-gray-200 hover:bg-gray-50'
-                                                    }`}
+                                                    className={`flex-1 py-2 px-4 rounded-lg border transition ${useSession
+                                                        ? 'bg-orange-50 border-orange-500 text-orange-700'
+                                                        : 'border-gray-200 hover:bg-gray-50'
+                                                        }`}
                                                 >
                                                     Session Budget
                                                 </button>
                                                 <button
                                                     onClick={() => setUseSession(false)}
-                                                    className={`flex-1 py-2 px-4 rounded-lg border transition ${
-                                                        !useSession
-                                                            ? 'bg-orange-50 border-orange-500 text-orange-700'
-                                                            : 'border-gray-200 hover:bg-gray-50'
-                                                    }`}
+                                                    className={`flex-1 py-2 px-4 rounded-lg border transition ${!useSession
+                                                        ? 'bg-orange-50 border-orange-500 text-orange-700'
+                                                        : 'border-gray-200 hover:bg-gray-50'
+                                                        }`}
                                                 >
                                                     Direct x402
                                                 </button>

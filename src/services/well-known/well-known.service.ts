@@ -76,51 +76,51 @@ export class WellKnownService {
             {
                 id: 'x402-session',
                 title: 'x402 Payment Session Management',
-                url: '/api/sessions/x402',
+                url: `${HOST}/api/sessions/x402`,
                 price: '0',
                 paywall: {
                     protocol: 'x402',
-                    settlement: '/api/pay'
+                    settlement: `${HOST}/api/pay`
                 }
             },
             {
                 id: 'perpai-quote',
                 title: 'PerpAI Quote Service',
-                url: '/api/perpai/quote',
+                url: `${HOST}/api/perpai/quote`,
                 price: '10000',
                 paywall: {
                     protocol: 'x402',
-                    settlement: '/api/pay'
+                    settlement: `${HOST}/api/pay`
                 }
             },
             {
                 id: 'perpai-trade',
                 title: 'PerpAI Trade Execution',
-                url: '/api/perpai/trade',
+                url: `${HOST}/api/perpai/trade`,
                 price: '50000',
                 paywall: {
                     protocol: 'x402',
-                    settlement: '/api/pay'
+                    settlement: `${HOST}/api/pay`
                 }
             },
             {
                 id: 'rwa-valuation',
                 title: 'RWA Valuation Service',
-                url: '/api/rwa/valuation',
+                url: `${HOST}/api/rwa/valuation`,
                 price: '100000',
                 paywall: {
                     protocol: 'x402',
-                    settlement: '/api/pay'
+                    settlement: `${HOST}/api/pay`
                 }
             },
             {
                 id: 'price-aggregation',
                 title: 'Multi-DEX Price Aggregation',
-                url: '/api/prices/aggregated',
+                url: `${HOST}/api/prices/aggregated`,
                 price: '5000',
                 paywall: {
                     protocol: 'x402',
-                    settlement: '/api/pay'
+                    settlement: `${HOST}/api/pay`
                 }
             }
         ];
@@ -136,11 +136,11 @@ export class WellKnownService {
                 const dbResources: AgentCardResource[] = services.map(service => ({
                     id: service.id,
                     title: service.name,
-                    url: service.endpoint_url || `/api/services/${service.id}/invoke`,
+                    url: service.endpoint_url || `${HOST}/api/services/${service.id}/invoke`,
                     price: service.price_per_call || '10000',
                     paywall: {
                         protocol: 'x402' as const,
-                        settlement: '/api/pay'
+                        settlement: `${HOST}/api/pay`
                     }
                 }));
 

@@ -584,7 +584,8 @@ export default function RWAServices() {
 
     const handleMintAsset = async (data: any) => {
         try {
-            const response = await fetch('/api/rwa/assets/mint', {
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const response = await fetch(`${apiUrl}/api/rwa/assets/mint`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -657,7 +658,8 @@ export default function RWAServices() {
 
             const signature = await signer.signTypedData(domain, types, value);
 
-            const confirmResponse = await fetch(`/api/rwa/assets/${assetId}/confirm`, {
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const confirmResponse = await fetch(`${apiUrl}/api/rwa/assets/${assetId}/confirm`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -821,7 +823,8 @@ export default function RWAServices() {
                                     rwaId={selectedRWAId}
                                     onTransition={async (toState) => {
                                         try {
-                                            const response = await fetch(`/api/rwa/assets/${selectedRWAId}/state`, {
+                                            const apiUrl = import.meta.env.VITE_API_URL || '';
+                                            const response = await fetch(`${apiUrl}/api/rwa/assets/${selectedRWAId}/state`, {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' },
                                                 body: JSON.stringify({

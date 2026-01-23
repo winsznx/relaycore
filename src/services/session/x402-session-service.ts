@@ -41,6 +41,7 @@ export class X402SessionService {
     private facilitator: Facilitator;
     private network: CronosNetwork;
     private relayWallet: ethers.Wallet | null = null;
+    private host: string;
 
     constructor(
         private supabase: SupabaseClient,
@@ -48,7 +49,9 @@ export class X402SessionService {
     ) {
         this.relayWalletAddress = relayWalletAddress;
         this.network = (process.env.CRONOS_NETWORK || 'cronos-testnet') as CronosNetwork;
+        this.network = (process.env.CRONOS_NETWORK || 'cronos-testnet') as CronosNetwork;
         this.facilitator = new Facilitator({ network: this.network });
+        this.host = process.env.PUBLIC_HOST || 'https://api.relaycore.xyz';
 
         // Initialize Relay wallet for signing x402 payments
         const relayPrivateKey = process.env.RELAY_PRIVATE_KEY;
@@ -116,7 +119,7 @@ export class X402SessionService {
         }
 
         // Generate x402 payment requirements for Facilitator (EIP-3009)
-        const resourceUrl = `/api/sessions/${session.session_id}/activate`;
+        const resourceUrl = `${this.host}/api/sessions/${session.session_id}/activate`;
         const x402PaymentRequirements = this.generatePaymentRequirements(params.maxSpend, resourceUrl);
 
         // Generate simple payment request for backward compatibility
@@ -372,7 +375,7 @@ export class X402SessionService {
             const paymentRequirements = this.facilitator.generatePaymentRequirements({
                 payTo: agentAddress,
                 maxAmountRequired: amountInBaseUnits,
-                resource: `/api/agents/${agentName}/invoke`,
+                resource: `${this.host}/api/agents/${agentName}/invoke`,
                 description: `Agent payment: ${amount} USDC`
             });
 
@@ -544,10 +547,11 @@ export class X402SessionService {
             });
 
             // Build payment requirements for the refund
+            // Build payment requirements for the refund
             const paymentRequirements = this.facilitator.generatePaymentRequirements({
                 payTo: session.owner_address,
                 maxAmountRequired: amountInBaseUnits,
-                resource: `/api/sessions/${sessionId}/refund`,
+                resource: `${this.host}/api/sessions/${sessionId}/refund`,
                 description: `Session refund: ${refundAmountStr} USDC`
             });
 

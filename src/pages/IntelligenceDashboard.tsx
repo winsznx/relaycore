@@ -146,7 +146,8 @@ export function Explorer() {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const response = await fetch('/api/explorer/overview');
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const response = await fetch(`${apiUrl}/api/explorer/overview`);
             if (response.ok) {
                 const data = await response.json();
                 setStats(data.stats || stats);
@@ -192,13 +193,14 @@ export function Explorer() {
     const fetchSystemData = async () => {
         setSystemLoading(true);
         try {
+            const apiUrl = import.meta.env.VITE_API_URL || '';
             const [healthRes, metricsRes, tracesRes, alertsRes, indexersRes, connectionsRes] = await Promise.allSettled([
-                fetch('/api/observability/health'),
-                fetch('/api/observability/metrics/json'),
-                fetch('/api/observability/traces?limit=10'),
-                fetch('/api/observability/alerts?limit=10'),
-                fetch('/api/observability/indexers'),
-                fetch('/api/observability/connections')
+                fetch(`${apiUrl}/api/observability/health`),
+                fetch(`${apiUrl}/api/observability/metrics/json`),
+                fetch(`${apiUrl}/api/observability/traces?limit=10`),
+                fetch(`${apiUrl}/api/observability/alerts?limit=10`),
+                fetch(`${apiUrl}/api/observability/indexers`),
+                fetch(`${apiUrl}/api/observability/connections`)
             ]);
 
             if (healthRes.status === 'fulfilled' && healthRes.value.ok) {
@@ -241,7 +243,8 @@ export function Explorer() {
     useEffect(() => {
         if (sessionId) {
             setSessionDetailLoading(true);
-            fetch(`/api/explorer/sessions/${sessionId}`)
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            fetch(`${apiUrl}/api/explorer/sessions/${sessionId}`)
                 .then(res => {
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
                     return res.json();
@@ -295,7 +298,8 @@ export function Explorer() {
             setIsSearching(true);
             setLoading(true);
             try {
-                const response = await fetch(`/api/explorer/search?q=${encodeURIComponent(searchQuery)}`);
+                const apiUrl = import.meta.env.VITE_API_URL || '';
+                const response = await fetch(`${apiUrl}/api/explorer/search?q=${encodeURIComponent(searchQuery)}`);
                 if (response.ok) {
                     const data = await response.json();
                     console.log('Search results:', data);
@@ -915,7 +919,8 @@ export function Explorer() {
                                                 setSelectedPayment(row.original);
                                                 setPaymentDetailLoading(true);
                                                 try {
-                                                    const response = await fetch(`/api/payments/${row.original.paymentId}`);
+                                                    const apiUrl = import.meta.env.VITE_API_URL || '';
+                                                    const response = await fetch(`${apiUrl}/api/payments/${row.original.paymentId}`);
                                                     if (response.ok) {
                                                         const fullPayment = await response.json();
                                                         setSelectedPayment({
@@ -1136,7 +1141,7 @@ export function Explorer() {
                                                                     <div className="text-xs text-muted-foreground">
                                                                         {conn.status === 'connected' ? (
                                                                             conn.latestBlock ? `Block #${conn.latestBlock.toLocaleString()}` :
-                                                                            conn.latencyMs ? `${conn.latencyMs}ms` : 'Connected'
+                                                                                conn.latencyMs ? `${conn.latencyMs}ms` : 'Connected'
                                                                         ) : (
                                                                             conn.error || 'Disconnected'
                                                                         )}

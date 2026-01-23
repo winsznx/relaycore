@@ -77,8 +77,8 @@ export function IntegrationStatus() {
     async function checkGraphQL(): Promise<boolean> {
         const start = Date.now();
         try {
-            // Use environment variable for GraphQL endpoint or fallback
-            const graphqlUrl = import.meta.env.VITE_GRAPHQL_URL || 'https://api.relaycore.xyz/graphql';
+            // Use environment variable for GraphQL endpoint or fallback to relative path (handled by proxy)
+            const graphqlUrl = import.meta.env.VITE_GRAPHQL_URL || '/graphql';
             const response = await fetch(graphqlUrl, {
                 method: 'POST',
                 headers: {
@@ -100,7 +100,7 @@ export function IntegrationStatus() {
     async function checkCronosRPC() {
         const start = Date.now();
         try {
-            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            const apiUrl = import.meta.env.VITE_API_URL || '';
             const response = await fetch(`${apiUrl}/api/health/rpc`);
             const latency = Date.now() - start;
             const data = await response.json();
