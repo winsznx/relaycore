@@ -18,7 +18,7 @@ import cryptoComLogo from '@/assets/partners/crypto-com.svg'
 import zauthLogo from '@/assets/partners/zauth.png'
 import { cn } from '@/lib/utils'
 import { formatUSDCWithLabel } from '@/lib/formatters'
-import Globe from '@/components/Globe'
+import { CLITerminal } from '@/components/CLITerminal'
 import DotGrid from '@/components/DotGrid'
 import { DashboardLayout } from '@/components/DashboardLayout'
 import { DashboardOverview, DashboardAgents, DashboardTransactions, DashboardReputation, DashboardSettings, DashboardTrading } from '@/components/DashboardPages'
@@ -129,16 +129,14 @@ function Navbar({ onOpenMenu }: { onOpenMenu: () => void }) {
   )
 }
 
-// --- Home Components ---
 
-// --- Home Components ---
 
 function HeroSection() {
   const navigate = useNavigate()
 
   return (
     <section className="relative min-h-[100dvh] md:snap-start w-full flex flex-col justify-center items-center bg-white overflow-hidden pt-28 pb-12">
-      {/* Interactive Dot Grid Background */}
+      {/* Interactive Dot Grid Background - Kept as requested */}
       <div className="absolute inset-0 z-0">
         <DotGrid
           dotSize={3}
@@ -216,16 +214,9 @@ function HeroSection() {
         </motion.div>
       </div>
 
-      {/* Hero Visual - 3D Globe - Outside Container */}
-      <div className="relative w-full h-[400px] md:h-[600px] mt-8">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.8, delay: 0.2 }}
-          className="w-full h-full"
-        >
-          <Globe className="w-full h-full" />
-        </motion.div>
+      {/* Hero Visual - CLI Terminal */}
+      <div className="relative w-full mt-8 mb-16 container mx-auto px-4">
+        <CLITerminal />
       </div>
     </section>
   )
