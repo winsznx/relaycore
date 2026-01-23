@@ -12,7 +12,7 @@ export default function DocsTradeExample() {
         <h2 className="text-2xl font-bold text-gray-900">Step 1: Get Trade Quote</h2>
         <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-x-auto">
           <code className="text-sm text-gray-800">{`async function getTradeQuote() {
-  const response = await fetch(`${import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz'}/api/trade/quote`, {
+  const response = await fetch(\`\${import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz'}/api/trade/quote\`, {
               method: 'POST',
             headers: {'Content-Type': 'application/json' },
             body: JSON.stringify({
