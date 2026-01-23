@@ -22,11 +22,13 @@
     "author": "Relay Core",
     "license": "MIT",
     "dependencies": {
+        "@crypto.com/developer-platform-client": "^1.1.2",
         "@crypto.com/facilitator-client": "^1.0.4",
         "@modelcontextprotocol/sdk": "^1.0.0",
         "cors": "^2.8.5",
         "dotenv": "^16.3.0",
         "ethers": "^6.15.0",
+        "eventsource": "^4.1.0",
         "express": "^5.0.0",
         "zod": "^3.22.0"
     },

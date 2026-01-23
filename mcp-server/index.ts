@@ -16,123 +16,123 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { EventSource } from "eventsource";
 import { z } from "zod";
+// Polyfill EventSource for Node.js
+if (!global.EventSource) {
+    global.EventSource = EventSource as any;
+}
 import { ethers } from "ethers";
 import express from "express";
 import cors from "cors";
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Load .env from the mcp-server directory
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, '.env') });
+
+// Debug: Log environment variables on startup
+console.error('[MCP Server] Environment check:', {
+    ESCROW_CONTRACT_ADDRESS: process.env.ESCROW_CONTRACT_ADDRESS ? 'SET' : 'NOT SET',
+    WALLET_PRIVATE_KEY: process.env.WALLET_PRIVATE_KEY ? 'SET' : 'NOT SET',
+    CRONOS_RPC_URL: process.env.CRONOS_RPC_URL ? 'SET' : 'NOT SET'
+});
+
 // Official x402 Facilitator Client from Crypto.com
 import { Facilitator, type PaymentRequirements, CronosNetwork } from '@crypto.com/facilitator-client';
 
+// Cronos Developer Platform SDK Tools
+import { registerCronosSDKTools } from './cronos-sdk.js';
+
+// RWA State Machine Tools
+import { registerRWATools } from './rwa-tools.js';
+
 // CRYPTO.COM MCP BRIDGE
-// Runtime bridge to Crypto.com MCP server using HTTP JSON-RPC
+// Runtime bridge to Crypto.com MCP server using Standard MCP Client (SSE)
 
-const CRYPTO_COM_MCP_URL = 'https://mcp.crypto.com/market-data/mcp';
-let mcpSessionId: string | null = null;
+const CRYPTO_COM_MCP_SSE_URL = 'https://mcp.crypto.com/market-data/mcp/sse';
+let mcpClient: Client | null = null;
+let mcpTransport: SSEClientTransport | null = null;
 
-interface MCPResponse {
-    jsonrpc: string;
-    id: number;
-    result?: unknown;
-    error?: { code: number; message: string };
-}
-
-async function initMcpSession(): Promise<string> {
-    if (mcpSessionId) return mcpSessionId;
+async function getMcpClient(): Promise<Client> {
+    if (mcpClient) return mcpClient;
 
     try {
-        const response = await fetch(CRYPTO_COM_MCP_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                jsonrpc: '2.0',
-                id: 1,
-                method: 'initialize',
-                params: {
-                    protocolVersion: '2024-11-05',
-                    capabilities: {},
-                    clientInfo: { name: 'relaycore-mcp-bridge', version: '1.0.0' }
-                }
-            })
-        });
+        console.error(`[MCP Bridge] Connecting to ${CRYPTO_COM_MCP_SSE_URL}...`);
 
-        if (!response.ok) {
-            throw new Error(`MCP init failed: ${response.status}`);
-        }
+        mcpTransport = new SSEClientTransport(new URL(CRYPTO_COM_MCP_SSE_URL));
+        mcpClient = new Client(
+            { name: "relaycore-bridge", version: "1.0.0" },
+            { capabilities: {} }
+        );
 
-        // Extract session ID from response headers if present
-        const sessionHeader = response.headers.get('mcp-session-id');
-        if (sessionHeader) {
-            mcpSessionId = sessionHeader;
-        } else {
-            mcpSessionId = `session-${Date.now()}`;
-        }
+        await mcpClient.connect(mcpTransport);
+        console.error('[MCP Bridge] Connected successfully');
 
-        console.error('[MCP Bridge] Initialized session with Crypto.com MCP');
-        return mcpSessionId;
+        // Handle closure
+        mcpTransport.onclose = () => {
+            console.error('[MCP Bridge] Connection closed');
+            mcpClient = null;
+            mcpTransport = null;
+        };
+
+        return mcpClient;
+
     } catch (error) {
-        console.error('[MCP Bridge] Failed to initialize:', error);
+        console.error('[MCP Bridge] Connection failed:', error);
+        mcpClient = null;
+        mcpTransport = null;
         throw error;
     }
 }
 
-async function callCryptoComMcp(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-
-    if (mcpSessionId) {
-        headers['mcp-session-id'] = mcpSessionId;
-    }
-
-    const response = await fetch(CRYPTO_COM_MCP_URL, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: Date.now(),
-            method,
-            params
-        })
-    });
-
-    if (!response.ok) {
-        throw new Error(`MCP call failed: ${response.status} ${response.statusText}`);
-    }
-
-    const json = await response.json() as MCPResponse;
-
-    if (json.error) {
-        throw new Error(`MCP error: ${json.error.message}`);
-    }
-
-    return json.result;
-}
-
 async function callCryptoComTool(toolName: string, args: Record<string, unknown> = {}): Promise<unknown> {
-    await initMcpSession();
+    const client = await getMcpClient();
 
-    const result = await callCryptoComMcp('tools/call', {
-        name: toolName,
-        arguments: args
-    }) as { content?: Array<{ type: string; text?: string }> };
+    try {
+        const result = await client.callTool({
+            name: toolName,
+            arguments: args
+        });
 
-    if (result?.content && Array.isArray(result.content)) {
-        const textContent = result.content.find(c => c.type === 'text');
-        if (textContent?.text) {
-            try {
-                return JSON.parse(textContent.text);
-            } catch {
-                return textContent.text;
+        // result is CallToolResult { content: ... }
+        if (result?.content && Array.isArray(result.content)) {
+            const textContent = result.content.find(c => c.type === 'text');
+            if (textContent?.text) {
+                try {
+                    return JSON.parse(textContent.text);
+                } catch {
+                    return textContent.text;
+                }
             }
         }
-    }
+        return result;
 
-    return result;
+    } catch (error) {
+        // If connection died, retry once
+        if ((error as Error).message?.includes('Connection') || (error as Error).message?.includes('Transport')) {
+            console.error('[MCP Bridge] Retrying call after connection error...');
+            mcpClient = null;
+            const newClient = await getMcpClient();
+            return newClient.callTool({ name: toolName, arguments: args });
+        }
+        throw error;
+    }
 }
 
 async function listCryptoComTools(): Promise<unknown> {
-    await initMcpSession();
-    return await callCryptoComMcp('tools/list', {});
+    const client = await getMcpClient();
+    return await client.listTools();
 }
+
+// ============================================
+// START SERVER
+// ============================================
 
 // ============================================
 // CONFIGURATION
@@ -148,7 +148,7 @@ const config = {
     // Crypto.com Exchange API (for direct calls)
     cryptoComExchange: 'https://api.crypto.com/exchange/v1',
 
-    // Cronos RPC endpoints
+    // Cronos RPC endpoints (all 4 networks)
     cronos: {
         mainnet: {
             rpc: 'https://evm.cronos.org',
@@ -161,6 +161,18 @@ const config = {
             chainId: 338,
             explorer: 'https://explorer.cronos.org/testnet',
             explorerApi: 'https://explorer-api.cronos.org/testnet/api'
+        },
+        'zkevm-mainnet': {
+            rpc: 'https://mainnet.zkevm.cronos.org',
+            chainId: 388,
+            explorer: 'https://explorer.zkevm.cronos.org',
+            explorerApi: 'https://explorer-api.zkevm.cronos.org/api/v1'
+        },
+        'zkevm-testnet': {
+            rpc: 'https://testnet.zkevm.cronos.org',
+            chainId: 240,
+            explorer: 'https://explorer.zkevm.cronos.org/testnet',
+            explorerApi: 'https://explorer-api.zkevm.cronos.org/testnet/api/v1'
         }
     },
 
@@ -357,9 +369,13 @@ async function fetchJson(url: string, options?: RequestInit) {
 async function cronosRpc(
     method: string,
     params: unknown[] = [],
-    network: 'mainnet' | 'testnet' = 'testnet'
+    network: 'mainnet' | 'testnet' | 'zkevm-mainnet' | 'zkevm-testnet' = 'testnet'
 ) {
-    const rpcUrl = config.cronos[network].rpc;
+    const networkConfig = config.cronos[network];
+    if (!networkConfig) {
+        throw new Error(`Unknown network: ${network}`);
+    }
+    const rpcUrl = networkConfig.rpc;
     const response = await fetch(rpcUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -394,6 +410,110 @@ function errorContent(message: string): { content: Array<{ type: "text"; text: s
         }]
     };
 }
+
+// ============================================
+// TASK ARTIFACT TRACKING
+// ============================================
+
+interface TaskArtifactInput {
+    tool_name: string;
+    inputs: Record<string, unknown>;
+}
+
+interface TaskArtifact {
+    task_id: string;
+    agent_id: string;
+    service_id?: string;
+    state: 'idle' | 'pending' | 'settled' | 'failed';
+}
+
+/**
+ * Create a TaskArtifact for tracking tool execution
+ */
+async function createTaskArtifact(input: TaskArtifactInput): Promise<TaskArtifact | null> {
+    try {
+        const agentId = wallet?.address || 'mcp-anonymous';
+        const response = await fetch(`${config.relayCoreApi}/api/tasks`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                agent_id: agentId,
+                service_id: `mcp:${input.tool_name}`,
+                inputs: input.inputs,
+            }),
+        });
+
+        if (!response.ok) {
+            console.error('Failed to create task artifact:', await response.text());
+            return null;
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error('Task artifact creation error:', error);
+        return null;
+    }
+}
+
+/**
+ * Mark a TaskArtifact as settled (successful)
+ */
+async function settleTaskArtifact(taskId: string, outputs: Record<string, unknown>): Promise<void> {
+    try {
+        await fetch(`${config.relayCoreApi}/api/tasks/${taskId}/settle`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ outputs }),
+        });
+    } catch (error) {
+        console.error('Task artifact settle error:', error);
+    }
+}
+
+/**
+ * Mark a TaskArtifact as failed
+ */
+async function failTaskArtifact(taskId: string, error: { code: string; message: string }): Promise<void> {
+    try {
+        await fetch(`${config.relayCoreApi}/api/tasks/${taskId}/fail`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: { ...error, retryable: true } }),
+        });
+    } catch (err) {
+        console.error('Task artifact fail error:', err);
+    }
+}
+
+/**
+ * Execute a tool with TaskArtifact tracking
+ */
+async function executeWithArtifact<T>(
+    toolName: string,
+    inputs: Record<string, unknown>,
+    executor: () => Promise<T>
+): Promise<T> {
+    const task = await createTaskArtifact({ tool_name: toolName, inputs });
+
+    try {
+        const result = await executor();
+
+        if (task) {
+            await settleTaskArtifact(task.task_id, { result });
+        }
+
+        return result;
+    } catch (error) {
+        if (task) {
+            await failTaskArtifact(task.task_id, {
+                code: 'EXECUTION_FAILED',
+                message: error instanceof Error ? error.message : String(error),
+            });
+        }
+        throw error;
+    }
+}
+
 
 // ============================================
 // SECTION 0: x402 PAYMENT TOOLS
@@ -431,63 +551,64 @@ server.tool(
         resourceUrl: z.string().optional().describe("Resource URL for entitlement (optional)")
     },
     async ({ recipient, amountUsdc, resourceUrl = "/manual-payment" }) => {
-        if (!wallet || !facilitator) {
-            return errorContent("Wallet or Facilitator not initialized. Set WALLET_PRIVATE_KEY in .env");
-        }
+        return executeWithArtifact(
+            'x402_pay',
+            { recipient, amountUsdc, resourceUrl },
+            async () => {
+                if (!wallet || !facilitator) {
+                    throw new Error("Wallet or Facilitator not initialized. Set WALLET_PRIVATE_KEY in .env");
+                }
 
-        // Convert to raw units (6 decimals)
-        const amountRaw = Math.floor(amountUsdc * 1e6).toString();
+                // Convert to raw units (6 decimals)
+                const amountRaw = Math.floor(amountUsdc * 1e6).toString();
 
-        // Generate a payment ID
-        const paymentId = `pay_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+                // Generate a payment ID
+                const paymentId = `pay_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-        // Build payment requirements using Facilitator SDK
-        const paymentRequirements = facilitator.generatePaymentRequirements({
-            payTo: recipient,
-            maxAmountRequired: amountRaw,
-            resource: resourceUrl,
-            description: 'Manual x402 payment'
-        });
+                // Build payment requirements using Facilitator SDK
+                const paymentRequirements = facilitator.generatePaymentRequirements({
+                    payTo: recipient,
+                    maxAmountRequired: amountRaw,
+                    resource: resourceUrl,
+                    description: 'Manual x402 payment'
+                });
 
-        // Generate payment header using official SDK
-        const paymentHeader = await generatePaymentHeader(paymentRequirements);
+                // Generate payment header using official SDK
+                const paymentHeader = await generatePaymentHeader(paymentRequirements);
 
-        if (!paymentHeader) {
-            return errorContent("Failed to generate payment header. Check USDC balance.");
-        }
+                if (!paymentHeader) {
+                    throw new Error("Failed to generate payment header. Check USDC balance.");
+                }
 
-        // Settle via Facilitator
-        const settleResponse = await fetch(`${config.relayCoreApi}/api/pay`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                paymentId,
-                paymentHeader,
-                paymentRequirements
-            })
-        });
+                // Settle via Facilitator
+                const settleResponse = await fetch(`${config.relayCoreApi}/api/pay`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        paymentId,
+                        paymentHeader,
+                        paymentRequirements
+                    })
+                });
 
-        const settleResult = await settleResponse.json();
+                const settleResult = await settleResponse.json();
 
-        if (!settleResponse.ok || !settleResult.success) {
-            return formatContent({
-                success: false,
-                error: settleResult.error || settleResult.details || "Facilitator settlement failed",
-                paymentId,
-                debug: settleResult
-            });
-        }
+                if (!settleResponse.ok || !settleResult.success) {
+                    throw new Error(settleResult.error || settleResult.details || "Facilitator settlement failed");
+                }
 
-        return formatContent({
-            success: true,
-            method: "facilitator",
-            paymentId,
-            txHash: settleResult.txHash,
-            recipient,
-            amountUsdc,
-            amountRaw,
-            explorer: `https://explorer.cronos.org/testnet/tx/${settleResult.txHash}`
-        });
+                return formatContent({
+                    success: true,
+                    method: "facilitator",
+                    paymentId,
+                    txHash: settleResult.txHash,
+                    recipient,
+                    amountUsdc,
+                    amountRaw,
+                    explorer: `https://explorer.cronos.org/testnet/tx/${settleResult.txHash}`
+                });
+            }
+        );
     }
 );
 
@@ -1131,7 +1252,7 @@ server.tool(
 server.tool(
     "cronos_block_number",
     {
-        network: z.enum(["mainnet", "testnet"]).optional().describe("Cronos network (default: testnet)")
+        network: z.enum(["mainnet", "testnet", "zkevm-mainnet", "zkevm-testnet"]).optional().describe("Cronos network: mainnet, testnet, zkevm-mainnet, zkevm-testnet (default: testnet)")
     },
     async ({ network = "testnet" }) => {
         try {
@@ -1157,7 +1278,7 @@ server.tool(
     "cronos_get_block",
     {
         blockNumber: z.number().optional().describe("Block number (latest if not specified)"),
-        network: z.enum(["mainnet", "testnet"]).optional().describe("Cronos network"),
+        network: z.enum(["mainnet", "testnet", "zkevm-mainnet", "zkevm-testnet"]).optional().describe("Cronos network: mainnet, testnet, zkevm-mainnet, zkevm-testnet"),
         includeTransactions: z.boolean().optional().describe("Include full transaction details")
     },
     async ({ blockNumber, network = "testnet", includeTransactions = false }) => {
@@ -1196,7 +1317,7 @@ server.tool(
     "cronos_get_balance",
     {
         address: z.string().describe("Wallet address (0x...)"),
-        network: z.enum(["mainnet", "testnet"]).optional().describe("Cronos network")
+        network: z.enum(["mainnet", "testnet", "zkevm-mainnet", "zkevm-testnet"]).optional().describe("Cronos network: mainnet, testnet, zkevm-mainnet, zkevm-testnet")
     },
     async ({ address, network = "testnet" }) => {
         try {
@@ -1225,7 +1346,7 @@ server.tool(
     "cronos_get_transaction",
     {
         txHash: z.string().describe("Transaction hash (0x...)"),
-        network: z.enum(["mainnet", "testnet"]).optional().describe("Cronos network")
+        network: z.enum(["mainnet", "testnet", "zkevm-mainnet", "zkevm-testnet"]).optional().describe("Cronos network: mainnet, testnet, zkevm-mainnet, zkevm-testnet")
     },
     async ({ txHash, network = "testnet" }) => {
         try {
@@ -1266,7 +1387,7 @@ server.tool(
     "cronos_get_nonce",
     {
         address: z.string().describe("Wallet address (0x...)"),
-        network: z.enum(["mainnet", "testnet"]).optional().describe("Cronos network")
+        network: z.enum(["mainnet", "testnet", "zkevm-mainnet", "zkevm-testnet"]).optional().describe("Cronos network: mainnet, testnet, zkevm-mainnet, zkevm-testnet")
     },
     async ({ address, network = "testnet" }) => {
         try {
@@ -1289,7 +1410,7 @@ server.tool(
 server.tool(
     "cronos_gas_price",
     {
-        network: z.enum(["mainnet", "testnet"]).optional().describe("Cronos network")
+        network: z.enum(["mainnet", "testnet", "zkevm-mainnet", "zkevm-testnet"]).optional().describe("Cronos network: mainnet, testnet, zkevm-mainnet, zkevm-testnet")
     },
     async ({ network = "testnet" }) => {
         try {
@@ -1322,7 +1443,7 @@ server.tool(
     {
         contractAddress: z.string().describe("Contract address (0x...)"),
         data: z.string().describe("Encoded function call data (0x...)"),
-        network: z.enum(["mainnet", "testnet"]).optional().describe("Cronos network")
+        network: z.enum(["mainnet", "testnet", "zkevm-mainnet", "zkevm-testnet"]).optional().describe("Cronos network: mainnet, testnet, zkevm-mainnet, zkevm-testnet")
     },
     async ({ contractAddress, data, network = "testnet" }) => {
         try {
@@ -1350,7 +1471,7 @@ server.tool(
     {
         tokenAddress: z.string().describe("ERC-20 token contract address"),
         walletAddress: z.string().describe("Wallet address to check"),
-        network: z.enum(["mainnet", "testnet"]).optional().describe("Cronos network")
+        network: z.enum(["mainnet", "testnet", "zkevm-mainnet", "zkevm-testnet"]).optional().describe("Cronos network: mainnet, testnet, zkevm-mainnet, zkevm-testnet")
     },
     async ({ tokenAddress, walletAddress, network = "testnet" }) => {
         try {
@@ -1403,7 +1524,7 @@ server.tool(
         fromBlock: z.number().optional().describe("Start block (default: latest - 1000)"),
         toBlock: z.number().optional().describe("End block (default: latest)"),
         topics: z.array(z.string()).optional().describe("Event topics to filter"),
-        network: z.enum(["mainnet", "testnet"]).optional().describe("Cronos network")
+        network: z.enum(["mainnet", "testnet", "zkevm-mainnet", "zkevm-testnet"]).optional().describe("Cronos network: mainnet, testnet, zkevm-mainnet, zkevm-testnet")
     },
     async ({ contractAddress, fromBlock, toBlock, topics, network = "testnet" }) => {
         try {
@@ -1752,11 +1873,13 @@ server.tool(
     {
         agentId: z.string().describe("Agent ID like 'relaycore.perp-ai'"),
         input: z.record(z.unknown()).describe("Agent input parameters"),
+        sessionId: z.string().optional().describe("Session ID for session-based payment"),
         paymentId: z.string().optional().describe("Payment ID if x402 was completed")
     },
-    async ({ agentId, input, paymentId }) => {
+    async ({ agentId, input, sessionId, paymentId }) => {
         try {
             const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (sessionId) headers['X-Session-Id'] = sessionId;
             if (paymentId) headers['X-Payment-Id'] = paymentId;
 
             const response = await fetch(`${config.relayCoreApi}/api/agents/${agentId}/invoke`, {
@@ -1933,7 +2056,7 @@ server.tool(
     "relay_get_agent",
     {
         agentId: z.number().describe("Agent token ID from IdentityRegistry"),
-        network: z.enum(["mainnet", "testnet"]).optional().describe("Cronos network")
+        network: z.enum(["mainnet", "testnet", "zkevm-mainnet", "zkevm-testnet"]).optional().describe("Cronos network: mainnet, testnet, zkevm-mainnet, zkevm-testnet")
     },
     async ({ agentId, network = "testnet" }) => {
         try {
@@ -1980,7 +2103,7 @@ server.tool(
     {
         agentId: z.number().describe("Agent token ID from IdentityRegistry"),
         tag: z.string().optional().describe("Optional tag to filter reputation (e.g., 'trade', 'oracle')"),
-        network: z.enum(["mainnet", "testnet"]).optional().describe("Cronos network")
+        network: z.enum(["mainnet", "testnet", "zkevm-mainnet", "zkevm-testnet"]).optional().describe("Cronos network: mainnet, testnet, zkevm-mainnet, zkevm-testnet")
     },
     async ({ agentId, tag, network = "testnet" }) => {
         try {
@@ -2024,7 +2147,7 @@ server.tool(
 server.tool(
     "relay_total_agents",
     {
-        network: z.enum(["mainnet", "testnet"]).optional().describe("Cronos network")
+        network: z.enum(["mainnet", "testnet", "zkevm-mainnet", "zkevm-testnet"]).optional().describe("Cronos network: mainnet, testnet, zkevm-mainnet, zkevm-testnet")
     },
     async ({ network = "testnet" }) => {
         try {
@@ -2340,59 +2463,116 @@ server.tool(
 );
 
 /**
- * Create a new payment session (returns 402 for funding)
+ * Create a new payment session with x402 deposit
+ * User pays Relay upfront, Relay manages budget and pays agents
  */
 server.tool(
     "relay_session_create",
     {
-        maxSpend: z.string().describe("Maximum USDC to spend in session (e.g., '100')"),
-        durationHours: z.number().optional().describe("Session duration in hours (default: 24)"),
-        authorizedAgents: z.array(z.string()).optional().describe("Agent addresses authorized to receive payments")
+        maxSpend: z.string().describe("Maximum USDC budget for session (e.g., '10.00')"),
+        durationHours: z.number().optional().describe("Session duration in hours (default: 24)")
     },
-    async ({ maxSpend, durationHours = 24, authorizedAgents = [] }) => {
-        try {
-            const escrowAddress = process.env.ESCROW_CONTRACT_ADDRESS;
-            if (!escrowAddress) {
-                return formatContent({
-                    status: "402_payment_required",
-                    error: "Escrow contract not deployed",
-                    action: "Deploy EscrowSession.sol to Cronos first",
-                    contractPath: "contracts/EscrowSession.sol"
+    async ({ maxSpend, durationHours = 24 }) => {
+        return executeWithArtifact(
+            'relay_session_create',
+            { maxSpend, durationHours },
+            async () => {
+                if (!wallet) {
+                    throw new Error("Wallet not configured. Set WALLET_PRIVATE_KEY in .env");
+                }
+
+                // Create session via API (off-chain, no gas)
+                const response = await fetch(`${config.relayCoreApi}/api/sessions/create`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ownerAddress: wallet.address,
+                        maxSpend,
+                        durationHours
+                    })
                 });
-            }
 
-            const sessionId = `sess_${Date.now()}`;
-            const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000).toISOString();
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(`Failed to create session: ${error}`);
+                }
 
-            return formatContent({
-                status: "402_payment_required",
-                sessionId,
-                paymentRequired: {
-                    amount: maxSpend,
-                    asset: "USDC",
-                    escrowContract: escrowAddress,
-                    network: "cronos_testnet"
-                },
-                sessionConfig: {
-                    maxSpend,
+                const result = await response.json();
+                const { session, paymentRequest } = result;
+
+                return formatContent({
+                    success: true,
+                    sessionId: session.session_id,
+                    status: session.status,
+                    owner: session.owner_address,
+                    maxSpend: session.max_spend,
                     durationHours,
-                    expiresAt,
-                    authorizedAgents: authorizedAgents.length > 0 ? authorizedAgents : ["any"]
-                },
-                instructions: [
-                    "1. Approve USDC spending for escrow contract",
-                    "2. Call deposit() with session ID and amount",
-                    "3. Session becomes active for agent execution"
-                ]
-            });
-        } catch (err) {
-            return errorContent(err instanceof Error ? err.message : 'Failed to create session');
-        }
+                    expiresAt: session.expires_at,
+                    paymentRequired: {
+                        amount: paymentRequest.amount,
+                        payTo: paymentRequest.payTo,
+                        asset: paymentRequest.asset,
+                        purpose: paymentRequest.purpose
+                    },
+                    nextSteps: [
+                        `Session created but requires payment to activate`,
+                        `Pay ${paymentRequest.amount} USDC to ${paymentRequest.payTo} via x402`,
+                        `Use: x402_pay with amount ${paymentRequest.amount}`,
+                        `Then activate with: relay_session_activate ${session.session_id} <txHash>`
+                    ]
+                })
+            }
+        );
     }
 );
 
 /**
- * Get session status and remaining balance
+ * Activate session after x402 payment
+ */
+server.tool(
+    "relay_session_activate",
+    {
+        sessionId: z.number().describe("Session ID to activate"),
+        txHash: z.string().describe("Transaction hash of x402 payment to Relay"),
+        amount: z.string().describe("Amount paid (must match session maxSpend)")
+    },
+    async ({ sessionId, txHash, amount }) => {
+        return executeWithArtifact(
+            'relay_session_activate',
+            { sessionId, txHash, amount },
+            async () => {
+                const response = await fetch(`${config.relayCoreApi}/api/sessions/${sessionId}/activate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ txHash, amount })
+                });
+
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(`Failed to activate session: ${error}`);
+                }
+
+                const session = await response.json();
+
+                return formatContent({
+                    success: true,
+                    sessionId: session.session_id,
+                    status: session.status,
+                    deposited: session.deposited,
+                    maxSpend: session.max_spend,
+                    spent: session.spent || '0',
+                    remaining: (parseFloat(session.max_spend) - parseFloat(session.spent || '0')).toFixed(6),
+                    expiresAt: session.expires_at,
+                    depositTxHash: session.deposit_tx_hash,
+                    message: `Session ${sessionId} activated! You can now hire agents.`
+                });
+            }
+        );
+    }
+);
+
+/**
+ * Get session status and spending details
  */
 server.tool(
     "relay_session_status",
@@ -2405,25 +2585,29 @@ server.tool(
             if (!response.ok) {
                 return formatContent({
                     sessionId,
-                    status: "unknown",
-                    deposited: "0",
-                    released: "0",
-                    remaining: "0",
-                    active: false,
-                    note: "Session data available when escrow is deployed"
+                    status: "not_found",
+                    message: "Session not found"
                 });
             }
-            const data = await response.json();
+
+            const session = await response.json();
+            const spent = parseFloat(session.spent || '0');
+            const maxSpend = parseFloat(session.max_spend || '0');
+            const remaining = maxSpend - spent;
+
             return formatContent({
-                sessionId,
-                owner: data.owner,
-                deposited: data.deposited,
-                released: data.released,
-                remaining: data.remaining,
-                maxSpend: data.maxSpend,
-                expiry: new Date(data.expiry * 1000).toISOString(),
-                active: data.active,
-                authorizedAgents: data.authorizedAgents || []
+                sessionId: session.session_id,
+                status: session.status,
+                owner: session.owner_address,
+                deposited: session.deposited,
+                maxSpend: session.max_spend,
+                spent: spent.toFixed(6),
+                remaining: remaining.toFixed(6),
+                paymentCount: session.payment_count || 0,
+                expiresAt: session.expires_at,
+                depositTxHash: session.deposit_tx_hash,
+                active: session.status === 'active',
+                utilizationPercent: maxSpend > 0 ? ((spent / maxSpend) * 100).toFixed(2) : '0'
             });
         } catch (err) {
             return errorContent(err instanceof Error ? err.message : 'Failed to get session status');
@@ -2705,6 +2889,2222 @@ server.tool(
     }
 );
 
+// ============================================================================
+// META-AGENT TOOLS - Agent Discovery & Hiring
+// ============================================================================
+
+/**
+ * Discover agents based on criteria
+ */
+server.tool(
+    "meta_agent_discover",
+    {
+        capability: z.string().optional().describe("Required capability (e.g., 'perpetual_trading')"),
+        category: z.string().optional().describe("Service category filter"),
+        minReputation: z.number().optional().describe("Minimum reputation score (0-100)"),
+        maxPricePerCall: z.string().optional().describe("Maximum price per call in USDC"),
+        limit: z.number().optional().describe("Max number of results (default: 10)")
+    },
+    async ({ capability, category, minReputation, maxPricePerCall, limit }) => {
+        try {
+            const response = await fetch(`${config.relayCoreApi}/api/meta-agent/discover`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    capability,
+                    category,
+                    minReputation,
+                    maxPricePerCall,
+                    limit: limit || 10
+                })
+            });
+
+            if (!response.ok) {
+                return errorContent('Agent discovery failed');
+            }
+
+            const data = await response.json();
+
+            return formatContent({
+                success: true,
+                count: data.count,
+                agents: data.agents.map((a: any) => ({
+                    agentId: a.agentId,
+                    name: a.agentName,
+                    url: a.agentUrl,
+                    reputation: a.reputationScore,
+                    pricePerCall: a.pricePerCall,
+                    successRate: `${a.successRate.toFixed(1)}%`,
+                    score: a.compositeScore,
+                    hasCard: !!a.card
+                }))
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Discovery failed');
+        }
+    }
+);
+
+/**
+ * Hire an agent to perform a task
+ */
+server.tool(
+    "meta_agent_hire",
+    {
+        agentId: z.string().describe("Agent ID to hire"),
+        resourceId: z.string().describe("Resource ID from agent card"),
+        budget: z.string().describe("Maximum budget in USDC"),
+        task: z.record(z.unknown()).describe("Task parameters")
+    },
+    async ({ agentId, resourceId, budget, task }) => {
+        try {
+            const agentAddress = wallet?.address || 'meta-agent-default';
+
+            const response = await fetch(`${config.relayCoreApi}/api/meta-agent/hire`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Agent-Id': agentAddress
+                },
+                body: JSON.stringify({
+                    agentId,
+                    resourceId,
+                    budget,
+                    task
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                return errorContent(error.error || 'Hiring failed');
+            }
+
+            const result = await response.json();
+
+            return formatContent({
+                success: true,
+                taskId: result.taskId,
+                agentId: result.agentId,
+                cost: result.cost,
+                status: 'hired',
+                nextStep: `Execute with: meta_agent_execute taskId=${result.taskId}`
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Hiring failed');
+        }
+    }
+);
+
+/**
+ * Execute a delegated task
+ */
+server.tool(
+    "meta_agent_execute",
+    {
+        taskId: z.string().describe("Task ID from hiring")
+    },
+    async ({ taskId }) => {
+        try {
+            const response = await fetch(`${config.relayCoreApi}/api/meta-agent/execute/${taskId}`, {
+                method: 'POST'
+            });
+
+            if (!response.ok) {
+                return errorContent('Execution failed');
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
+                return formatContent({
+                    success: true,
+                    taskId: data.outcome.taskId,
+                    agentId: data.outcome.agentId,
+                    state: data.outcome.state,
+                    cost: data.outcome.cost,
+                    outputs: data.outcome.outputs,
+                    metrics: data.outcome.metrics
+                });
+            } else {
+                return formatContent({
+                    success: false,
+                    taskId: data.outcome.taskId,
+                    error: data.outcome.error
+                });
+            }
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Execution failed');
+        }
+    }
+);
+
+/**
+ * Get delegation status
+ */
+server.tool(
+    "meta_agent_status",
+    {
+        taskId: z.string().describe("Task ID to check")
+    },
+    async ({ taskId }) => {
+        try {
+            const response = await fetch(`${config.relayCoreApi}/api/meta-agent/status/${taskId}`);
+
+            if (!response.ok) {
+                return errorContent('Task not found');
+            }
+
+            const data = await response.json();
+
+            return formatContent({
+                success: true,
+                ...data.outcome
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Status check failed');
+        }
+    }
+);
+
+/**
+ * Get agent card
+ */
+server.tool(
+    "meta_agent_card",
+    {
+        agentId: z.string().describe("Agent ID")
+    },
+    async ({ agentId }) => {
+        try {
+            const response = await fetch(`${config.relayCoreApi}/api/meta-agent/agent-card/${agentId}`);
+
+            if (!response.ok) {
+                return errorContent('Agent card not found');
+            }
+
+            const data = await response.json();
+
+            return formatContent({
+                success: true,
+                card: data.card
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch card');
+        }
+    }
+);
+
+/**
+ * Fetch agent card directly from any URL (GAP: agent_fetch_card)
+ * This enables discovery of any A2A-compliant agent regardless of registry
+ */
+server.tool(
+    "agent_fetch_card",
+    {
+        url: z.string().describe("Base URL of agent (will try /.well-known/agent-card.json)"),
+        fullUrl: z.boolean().optional().describe("If true, fetch from exact URL instead of well-known path")
+    },
+    async ({ url, fullUrl }) => {
+        try {
+            // Build URLs to try
+            const urlsToTry = fullUrl
+                ? [url]
+                : [
+                    `${url.replace(/\/$/, '')}/.well-known/agent-card.json`,
+                    `${url.replace(/\/$/, '')}/.well-known/agent.json`,
+                    `${url.replace(/\/$/, '')}/agent-card.json`
+                ];
+
+            for (const cardUrl of urlsToTry) {
+                try {
+                    const response = await fetch(cardUrl, {
+                        headers: { 'Accept': 'application/json' },
+                        signal: AbortSignal.timeout(10000)
+                    });
+
+                    if (response.ok) {
+                        const card = await response.json();
+
+                        return formatContent({
+                            success: true,
+                            fetchedFrom: cardUrl,
+                            card: {
+                                name: card.name,
+                                description: card.description,
+                                url: card.url,
+                                version: card.version,
+                                network: card.network,
+                                capabilities: card.capabilities || [],
+                                resources: (card.resources || []).map((r: any) => ({
+                                    id: r.id,
+                                    title: r.title,
+                                    description: r.description,
+                                    url: r.url,
+                                    hasPaywall: !!r.paywall
+                                })),
+                                x402: card.x402 ? {
+                                    enabled: true,
+                                    payeeAddress: card.x402.payeeAddress,
+                                    tokenAddress: card.x402.tokenAddress
+                                } : null,
+                                contracts: card.contracts
+                            }
+                        });
+                    }
+                } catch {
+                    // Try next URL
+                    continue;
+                }
+            }
+
+            return errorContent(`No agent card found at ${url}. Tried: ${urlsToTry.join(', ')}`);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch agent card');
+        }
+    }
+);
+
+/**
+ * List resources from an agent card (GAP: agent_list_resources)
+ * Useful for discovering what capabilities an agent offers
+ */
+server.tool(
+    "agent_list_resources",
+    {
+        url: z.string().describe("Agent base URL or agent card URL")
+    },
+    async ({ url }) => {
+        try {
+            // Try to fetch agent card
+            const urlsToTry = [
+                `${url.replace(/\/$/, '')}/.well-known/agent-card.json`,
+                `${url.replace(/\/$/, '')}/.well-known/agent.json`,
+                url // Try as-is
+            ];
+
+            for (const cardUrl of urlsToTry) {
+                try {
+                    const response = await fetch(cardUrl, {
+                        headers: { 'Accept': 'application/json' },
+                        signal: AbortSignal.timeout(10000)
+                    });
+
+                    if (response.ok) {
+                        const card = await response.json();
+
+                        const resources = (card.resources || []).map((r: any, index: number) => ({
+                            index,
+                            id: r.id,
+                            title: r.title,
+                            description: r.description || '',
+                            url: r.url,
+                            fullUrl: r.url.startsWith('http')
+                                ? r.url
+                                : `${card.url || url.replace(/\/$/, '')}${r.url}`,
+                            paywall: r.paywall ? {
+                                protocol: r.paywall.protocol || 'x402',
+                                settlementEndpoint: r.paywall.settlement
+                            } : null
+                        }));
+
+                        return formatContent({
+                            success: true,
+                            agentName: card.name,
+                            agentUrl: card.url || url,
+                            resourceCount: resources.length,
+                            resources,
+                            usage: "Use 'meta_agent_hire' with agentId and resourceId to hire this agent"
+                        });
+                    }
+                } catch {
+                    continue;
+                }
+            }
+
+            return errorContent(`No agent card found at ${url}`);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to list resources');
+        }
+    }
+);
+
+/**
+ * Validate if a URL hosts a valid A2A agent
+ */
+server.tool(
+    "agent_validate",
+    {
+        url: z.string().describe("URL to validate as A2A agent")
+    },
+    async ({ url }) => {
+        try {
+            const cardUrl = `${url.replace(/\/$/, '')}/.well-known/agent-card.json`;
+
+            const response = await fetch(cardUrl, {
+                headers: { 'Accept': 'application/json' },
+                signal: AbortSignal.timeout(10000)
+            });
+
+            if (!response.ok) {
+                return formatContent({
+                    valid: false,
+                    url,
+                    reason: `No agent card at ${cardUrl} (HTTP ${response.status})`,
+                    suggestion: "Agent must serve /.well-known/agent-card.json"
+                });
+            }
+
+            const card = await response.json();
+
+            // Validate required fields
+            const issues: string[] = [];
+            if (!card.name) issues.push("Missing 'name' field");
+            if (!card.url) issues.push("Missing 'url' field");
+            if (!card.resources || !Array.isArray(card.resources)) {
+                issues.push("Missing or invalid 'resources' array");
+            }
+
+            // Check x402 compliance
+            const hasX402 = !!card.x402 || card.resources?.some((r: any) => r.paywall);
+
+            return formatContent({
+                valid: issues.length === 0,
+                url,
+                cardUrl,
+                agentName: card.name || 'Unknown',
+                resourceCount: (card.resources || []).length,
+                x402Enabled: hasX402,
+                issues: issues.length > 0 ? issues : undefined,
+                capabilities: card.capabilities || []
+            });
+        } catch (error) {
+            return formatContent({
+                valid: false,
+                url,
+                reason: error instanceof Error ? error.message : 'Connection failed',
+                suggestion: "Check if the URL is accessible and CORS is configured"
+            });
+        }
+    }
+);
+
+// ============================================================================
+// INDEXER TOOLS - Graph, Perp, Temporal Data
+// ============================================================================
+
+
+/**
+ * Get service dependency graph
+ */
+server.tool(
+    "indexer_service_graph",
+    {},
+    async () => {
+        try {
+            const response = await fetch(`${config.relayCoreApi}/graphql`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query: `query { serviceGraph { nodes { id name type owner } edges { from to weight } } }`
+                })
+            });
+
+            const data = await response.json();
+            return formatContent(data.data.serviceGraph);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch service graph');
+        }
+    }
+);
+
+/**
+ * Get service dependencies
+ */
+server.tool(
+    "indexer_service_dependencies",
+    {
+        serviceId: z.string().describe("Service ID")
+    },
+    async ({ serviceId }) => {
+        try {
+            const response = await fetch(`${config.relayCoreApi}/graphql`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query: `query { serviceDependencies(serviceId: "${serviceId}") }`
+                })
+            });
+
+            const data = await response.json();
+            return formatContent({ serviceId, dependencies: data.data.serviceDependencies });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch dependencies');
+        }
+    }
+);
+
+/**
+ * Get open perp positions
+ */
+server.tool(
+    "indexer_perp_positions",
+    {
+        trader: z.string().optional().describe("Trader address (optional)")
+    },
+    async ({ trader }) => {
+        try {
+            const query = trader
+                ? `query { perpOpenPositions(trader: "${trader}") { id trader pair isLong size pnl } }`
+                : `query { perpOpenPositions { id trader pair isLong size pnl } }`;
+
+            const response = await fetch(`${config.relayCoreApi}/graphql`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query })
+            });
+
+            const data = await response.json();
+            return formatContent({ positions: data.data.perpOpenPositions });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch positions');
+        }
+    }
+);
+
+/**
+ * Get perp trader stats
+ */
+server.tool(
+    "indexer_perp_trader_stats",
+    {
+        trader: z.string().describe("Trader address")
+    },
+    async ({ trader }) => {
+        try {
+            const response = await fetch(`${config.relayCoreApi}/graphql`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query: `query { perpTraderStats(trader: "${trader}") { totalTrades totalVolume totalPnl winRate } }`
+                })
+            });
+
+            const data = await response.json();
+            return formatContent(data.data.perpTraderStats);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch trader stats');
+        }
+    }
+);
+
+/**
+ * Get task artifacts
+ */
+server.tool(
+    "indexer_tasks",
+    {
+        agentId: z.string().optional().describe("Filter by agent ID"),
+        serviceId: z.string().optional().describe("Filter by service ID"),
+        state: z.string().optional().describe("Filter by state (pending/settled/failed)"),
+        limit: z.number().optional().describe("Max results (default: 50)")
+    },
+    async ({ agentId, serviceId, state, limit }) => {
+        try {
+            const args = [];
+            if (agentId) args.push(`agentId: "${agentId}"`);
+            if (serviceId) args.push(`serviceId: "${serviceId}"`);
+            if (state) args.push(`state: "${state}"`);
+            if (limit) args.push(`limit: ${limit}`);
+
+            const argsStr = args.length > 0 ? `(${args.join(', ')})` : '';
+
+            const response = await fetch(`${config.relayCoreApi}/graphql`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query: `query { tasks${argsStr} { taskId agentId serviceId state createdAt } }`
+                })
+            });
+
+            const data = await response.json();
+            return formatContent({ tasks: data.data.tasks });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch tasks');
+        }
+    }
+);
+
+// ============================================================================
+// COMPREHENSIVE CRONOS ZKEVM EXPLORER API - Full Integration
+// ============================================================================
+
+const CRONOS_ZKEVM_API = 'https://explorer-api.zkevm.cronos.org/api/v1';
+const CRONOS_ZKEVM_API_KEY = process.env.CRONOS_ZKEVM_API_KEY || '';
+
+/**
+ * Get native token balance by address
+ */
+server.tool(
+    "cronos_zkevm_balance",
+    {
+        address: z.string().describe("Cronos zkEVM address"),
+        blockHeight: z.string().optional().describe("Block height (number or 'latest', 'earliest', 'pending')")
+    },
+    async ({ address, blockHeight }) => {
+        try {
+            const params = new URLSearchParams({ address });
+            if (blockHeight) params.set('blockHeight', blockHeight);
+
+            const response = await fetch(`${CRONOS_ZKEVM_API}/account/getBalance?${params}`);
+            if (!response.ok) return errorContent('Failed to fetch balance');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch balance');
+        }
+    }
+);
+
+/**
+ * Get transactions by address
+ */
+server.tool(
+    "cronos_zkevm_account_txs",
+    {
+        address: z.string().describe("Cronos zkEVM address"),
+        startBlock: z.string().optional().describe("Start block range"),
+        endBlock: z.string().optional().describe("End block range"),
+        session: z.string().optional().describe("Previous page session"),
+        limit: z.number().optional().describe("Page size (default: 20, max: 100)")
+    },
+    async ({ address, startBlock, endBlock, session, limit }) => {
+        try {
+            const params = new URLSearchParams({ address });
+            if (startBlock) params.set('startBlock', startBlock);
+            if (endBlock) params.set('endBlock', endBlock);
+            if (session) params.set('session', session);
+            if (limit) params.set('limit', limit.toString());
+
+            const response = await fetch(`${CRONOS_ZKEVM_API}/account/getTxsByAddress?${params}`);
+            if (!response.ok) return errorContent('Failed to fetch transactions');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch transactions');
+        }
+    }
+);
+
+/**
+ * Get internal transactions by address
+ */
+server.tool(
+    "cronos_zkevm_internal_txs",
+    {
+        address: z.string().describe("Cronos zkEVM address"),
+        startBlock: z.string().optional().describe("Start block range"),
+        endBlock: z.string().optional().describe("End block range"),
+        session: z.string().optional().describe("Previous page session"),
+        limit: z.number().optional().describe("Page size (default: 20, max: 100)")
+    },
+    async ({ address, startBlock, endBlock, session, limit }) => {
+        try {
+            const params = new URLSearchParams({ address });
+            if (startBlock) params.set('startBlock', startBlock);
+            if (endBlock) params.set('endBlock', endBlock);
+            if (session) params.set('session', session);
+            if (limit) params.set('limit', limit.toString());
+
+            const response = await fetch(`${CRONOS_ZKEVM_API}/account/getInternalTxsByAddress?${params}`);
+            if (!response.ok) return errorContent('Failed to fetch internal transactions');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch internal transactions');
+        }
+    }
+);
+
+/**
+ * Get ERC-20 token transfer events by address
+ */
+server.tool(
+    "cronos_zkevm_token_transfers",
+    {
+        address: z.string().describe("Cronos zkEVM address"),
+        startBlock: z.string().optional().describe("Start block range"),
+        endBlock: z.string().optional().describe("End block range"),
+        session: z.string().optional().describe("Previous page session"),
+        limit: z.number().optional().describe("Page size (default: 20, max: 100)")
+    },
+    async ({ address, startBlock, endBlock, session, limit }) => {
+        try {
+            const params = new URLSearchParams({ address });
+            if (startBlock) params.set('startBlock', startBlock);
+            if (endBlock) params.set('endBlock', endBlock);
+            if (session) params.set('session', session);
+            if (limit) params.set('limit', limit.toString());
+
+            const response = await fetch(`${CRONOS_ZKEVM_API}/account/getERC20TransferByAddress?${params}`);
+            if (!response.ok) return errorContent('Failed to fetch token transfers');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch token transfers');
+        }
+    }
+);
+
+/**
+ * Get block detail by height
+ */
+server.tool(
+    "cronos_zkevm_block",
+    {
+        height: z.string().describe("Block height")
+    },
+    async ({ height }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/block/getDetailByHeight?height=${height}`);
+            if (!response.ok) return errorContent('Block not found');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch block');
+        }
+    }
+);
+
+/**
+ * Get block height by time
+ */
+server.tool(
+    "cronos_zkevm_block_by_time",
+    {
+        timestamp: z.number().describe("Unix timestamp")
+    },
+    async ({ timestamp }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/block/getHeightByTime?timestamp=${timestamp}`);
+            if (!response.ok) return errorContent('Failed to get block height');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to get block height');
+        }
+    }
+);
+
+/**
+ * Get contract ABI
+ */
+server.tool(
+    "cronos_zkevm_contract_abi",
+    {
+        address: z.string().describe("Contract address")
+    },
+    async ({ address }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/contract/getABI?address=${address}`);
+            if (!response.ok) return errorContent('Contract ABI not found');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch ABI');
+        }
+    }
+);
+
+/**
+ * Get contract source code
+ */
+server.tool(
+    "cronos_zkevm_contract_source",
+    {
+        address: z.string().describe("Contract address")
+    },
+    async ({ address }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/contract/getSourceCode?${address}`);
+            if (!response.ok) return errorContent('Contract source not found');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch source code');
+        }
+    }
+);
+
+/**
+ * Get contract verification status
+ */
+server.tool(
+    "cronos_zkevm_contract_verification",
+    {
+        address: z.string().describe("Contract address")
+    },
+    async ({ address }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/contract/getVerificationStatus?address=${address}`);
+            if (!response.ok) return errorContent('Failed to get verification status');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to get verification status');
+        }
+    }
+);
+
+/**
+ * Submit contract verification
+ */
+server.tool(
+    "cronos_zkevm_verify_contract",
+    {
+        address: z.string().describe("Contract address"),
+        sourceCode: z.string().describe("Contract source code"),
+        compilerVersion: z.string().describe("Solidity compiler version"),
+        optimizationUsed: z.boolean().describe("Was optimization enabled"),
+        runs: z.number().optional().describe("Optimization runs")
+    },
+    async ({ address, sourceCode, compilerVersion, optimizationUsed, runs }) => {
+        try {
+            const body = {
+                address,
+                sourceCode,
+                compilerVersion,
+                optimizationUsed,
+                runs: runs || 200
+            };
+
+            const response = await fetch(`${CRONOS_ZKEVM_API}/contract/verify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            if (!response.ok) return errorContent('Verification failed');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Verification failed');
+        }
+    }
+);
+
+/**
+ * Get Solc compiler versions
+ */
+server.tool(
+    "cronos_zkevm_solc_versions",
+    {},
+    async () => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/contract/getSolcVersions`);
+            if (!response.ok) return errorContent('Failed to fetch compiler versions');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch compiler versions');
+        }
+    }
+);
+
+/**
+ * Get Vyper compiler versions
+ */
+server.tool(
+    "cronos_zkevm_vyper_versions",
+    {},
+    async () => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/contract/getVyperVersions`);
+            if (!response.ok) return errorContent('Failed to fetch Vyper versions');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch Vyper versions');
+        }
+    }
+);
+
+/**
+ * Get zkSync Solc compiler versions
+ */
+server.tool(
+    "cronos_zkevm_zksync_versions",
+    {},
+    async () => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/contract/getZkSyncSolcVersions`);
+            if (!response.ok) return errorContent('Failed to fetch zkSync versions');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch zkSync versions');
+        }
+    }
+);
+
+/**
+ * Get zkSync Vyper compiler versions
+ */
+server.tool(
+    "cronos_zkevm_zksync_vyper_versions",
+    {},
+    async () => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/contract/getZkSyncVyperVersions`);
+            if (!response.ok) return errorContent('Failed to fetch zkSync Vyper versions');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch zkSync Vyper versions');
+        }
+    }
+);
+
+/**
+ * Get logs
+ */
+server.tool(
+    "cronos_zkevm_logs",
+    {
+        fromBlock: z.string().optional().describe("Start block"),
+        toBlock: z.string().optional().describe("End block"),
+        address: z.string().optional().describe("Contract address"),
+        topics: z.array(z.string()).optional().describe("Event topics"),
+        limit: z.number().optional().describe("Max results")
+    },
+    async ({ fromBlock, toBlock, address, topics, limit }) => {
+        try {
+            const params = new URLSearchParams();
+            if (fromBlock) params.set('fromBlock', fromBlock);
+            if (toBlock) params.set('toBlock', toBlock);
+            if (address) params.set('address', address);
+            if (topics) params.set('topics', JSON.stringify(topics));
+            if (limit) params.set('limit', limit.toString());
+
+            const response = await fetch(`${CRONOS_ZKEVM_API}/logs/getLogs?${params}`);
+            if (!response.ok) return errorContent('Failed to fetch logs');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch logs');
+        }
+    }
+);
+
+/**
+ * Get logs by block height
+ */
+server.tool(
+    "cronos_zkevm_logs_by_block",
+    {
+        blockHeight: z.string().describe("Block height")
+    },
+    async ({ blockHeight }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/logs/getLogsByBlockHeight?blockHeight=${blockHeight}`);
+            if (!response.ok) return errorContent('Failed to fetch logs');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch logs');
+        }
+    }
+);
+
+/**
+ * Get ERC-20 token total supply
+ */
+server.tool(
+    "cronos_zkevm_token_supply",
+    {
+        contractAddress: z.string().describe("Token contract address")
+    },
+    async ({ contractAddress }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/tokens/getERC20TokenTotalSupply?contractAddress=${contractAddress}`);
+            if (!response.ok) return errorContent('Failed to fetch token supply');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch token supply');
+        }
+    }
+);
+
+/**
+ * Get ERC-20 token account balance
+ */
+server.tool(
+    "cronos_zkevm_token_balance",
+    {
+        contractAddress: z.string().describe("Token contract address"),
+        address: z.string().describe("Account address")
+    },
+    async ({ contractAddress, address }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/tokens/getERC20TokenAccountBalance?contractAddress=${contractAddress}&address=${address}`);
+            if (!response.ok) return errorContent('Failed to fetch token balance');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch token balance');
+        }
+    }
+);
+
+/**
+ * Get transaction status by hash
+ */
+server.tool(
+    "cronos_zkevm_tx_status",
+    {
+        txHash: z.string().describe("Transaction hash")
+    },
+    async ({ txHash }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/transactions/getTransactionStatus?txHash=${txHash}`);
+            if (!response.ok) return errorContent('Transaction not found');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch transaction status');
+        }
+    }
+);
+
+/**
+ * Get internal transactions by transaction hash
+ */
+server.tool(
+    "cronos_zkevm_internal_txs_by_hash",
+    {
+        txHash: z.string().describe("Transaction hash")
+    },
+    async ({ txHash }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/transactions/getInternalTransactions?txHash=${txHash}`);
+            if (!response.ok) return errorContent('Failed to fetch internal transactions');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch internal transactions');
+        }
+    }
+);
+
+/**
+ * Get internal transactions by block range
+ */
+server.tool(
+    "cronos_zkevm_internal_txs_by_range",
+    {
+        startBlock: z.string().describe("Start block"),
+        endBlock: z.string().describe("End block")
+    },
+    async ({ startBlock, endBlock }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/transactions/getInternalTransactionsByBlockRange?startBlock=${startBlock}&endBlock=${endBlock}`);
+            if (!response.ok) return errorContent('Failed to fetch internal transactions');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch internal transactions');
+        }
+    }
+);
+
+/**
+ * Get ZKCRO price
+ */
+server.tool(
+    "cronos_zkevm_price",
+    {},
+    async () => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/zkcroprice/getZkcroPrice`);
+            if (!response.ok) return errorContent('Failed to fetch ZKCRO price');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch ZKCRO price');
+        }
+    }
+);
+
+// Eth Proxy methods (JSON-RPC compatible)
+
+/**
+ * eth_blockNumber - Get current block number
+ */
+server.tool(
+    "cronos_zkevm_eth_block_number",
+    {},
+    async () => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/eth-proxy/eth_blockNumber`);
+            if (!response.ok) return errorContent('Failed to fetch block number');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch block number');
+        }
+    }
+);
+
+/**
+ * eth_getBlockByNumber - Get block by number
+ */
+server.tool(
+    "cronos_zkevm_eth_get_block",
+    {
+        blockNumber: z.string().describe("Block number (hex) or 'latest'"),
+        fullTx: z.boolean().optional().describe("Include full transaction objects")
+    },
+    async ({ blockNumber, fullTx }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/eth-proxy/eth_getBlockByNumber?blockNumber=${blockNumber}&fullTx=${fullTx || false}`);
+            if (!response.ok) return errorContent('Block not found');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch block');
+        }
+    }
+);
+
+/**
+ * eth_getBlockTransactionCountByNumber - Get transaction count in block
+ */
+server.tool(
+    "cronos_zkevm_eth_block_tx_count",
+    {
+        blockNumber: z.string().describe("Block number (hex) or 'latest'")
+    },
+    async ({ blockNumber }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/eth-proxy/eth_getBlockTransactionCountByNumber?blockNumber=${blockNumber}`);
+            if (!response.ok) return errorContent('Failed to fetch transaction count');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch transaction count');
+        }
+    }
+);
+
+/**
+ * eth_getTransactionByHash - Get transaction by hash
+ */
+server.tool(
+    "cronos_zkevm_eth_get_tx",
+    {
+        txHash: z.string().describe("Transaction hash")
+    },
+    async ({ txHash }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/eth-proxy/eth_getTransactionByHash?txHash=${txHash}`);
+            if (!response.ok) return errorContent('Transaction not found');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch transaction');
+        }
+    }
+);
+
+/**
+ * eth_getTransactionByBlockNumberAndIndex - Get transaction by block and index
+ */
+server.tool(
+    "cronos_zkevm_eth_get_tx_by_index",
+    {
+        blockNumber: z.string().describe("Block number (hex)"),
+        index: z.string().describe("Transaction index (hex)")
+    },
+    async ({ blockNumber, index }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/eth-proxy/eth_getTransactionByBlockNumberAndIndex?blockNumber=${blockNumber}&index=${index}`);
+            if (!response.ok) return errorContent('Transaction not found');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch transaction');
+        }
+    }
+);
+
+/**
+ * eth_getTransactionCount - Get transaction count for address
+ */
+server.tool(
+    "cronos_zkevm_eth_tx_count",
+    {
+        address: z.string().describe("Address"),
+        blockNumber: z.string().optional().describe("Block number (hex) or 'latest'")
+    },
+    async ({ address, blockNumber }) => {
+        try {
+            const block = blockNumber || 'latest';
+            const response = await fetch(`${CRONOS_ZKEVM_API}/eth-proxy/eth_getTransactionCount?address=${address}&blockNumber=${block}`);
+            if (!response.ok) return errorContent('Failed to fetch transaction count');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch transaction count');
+        }
+    }
+);
+
+/**
+ * eth_sendRawTransaction - Send signed transaction
+ */
+server.tool(
+    "cronos_zkevm_eth_send_raw_tx",
+    {
+        signedTx: z.string().describe("Signed transaction data (hex)")
+    },
+    async ({ signedTx }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/eth-proxy/eth_sendRawTransaction`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ signedTx })
+            });
+
+            if (!response.ok) return errorContent('Failed to send transaction');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to send transaction');
+        }
+    }
+);
+
+/**
+ * eth_getTransactionReceipt - Get transaction receipt
+ */
+server.tool(
+    "cronos_zkevm_eth_tx_receipt",
+    {
+        txHash: z.string().describe("Transaction hash")
+    },
+    async ({ txHash }) => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/eth-proxy/eth_getTransactionReceipt?txHash=${txHash}`);
+            if (!response.ok) return errorContent('Receipt not found');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch receipt');
+        }
+    }
+);
+
+/**
+ * eth_call - Execute contract call
+ */
+server.tool(
+    "cronos_zkevm_eth_call",
+    {
+        to: z.string().describe("Contract address"),
+        data: z.string().describe("Call data (hex)"),
+        blockNumber: z.string().optional().describe("Block number (hex) or 'latest'")
+    },
+    async ({ to, data, blockNumber }) => {
+        try {
+            const block = blockNumber || 'latest';
+            const response = await fetch(`${CRONOS_ZKEVM_API}/eth-proxy/eth_call?to=${to}&data=${data}&blockNumber=${block}`);
+            if (!response.ok) return errorContent('Call failed');
+
+            const result = await response.json();
+            return formatContent(result);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Call failed');
+        }
+    }
+);
+
+/**
+ * eth_getCode - Get contract code
+ */
+server.tool(
+    "cronos_zkevm_eth_get_code",
+    {
+        address: z.string().describe("Contract address"),
+        blockNumber: z.string().optional().describe("Block number (hex) or 'latest'")
+    },
+    async ({ address, blockNumber }) => {
+        try {
+            const block = blockNumber || 'latest';
+            const response = await fetch(`${CRONOS_ZKEVM_API}/eth-proxy/eth_getCode?address=${address}&blockNumber=${block}`);
+            if (!response.ok) return errorContent('Failed to fetch code');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch code');
+        }
+    }
+);
+
+/**
+ * eth_getStorageAt - Get storage value at position
+ */
+server.tool(
+    "cronos_zkevm_eth_storage",
+    {
+        address: z.string().describe("Contract address"),
+        position: z.string().describe("Storage position (hex)"),
+        blockNumber: z.string().optional().describe("Block number (hex) or 'latest'")
+    },
+    async ({ address, position, blockNumber }) => {
+        try {
+            const block = blockNumber || 'latest';
+            const response = await fetch(`${CRONOS_ZKEVM_API}/eth-proxy/eth_getStorageAt?address=${address}&position=${position}&blockNumber=${block}`);
+            if (!response.ok) return errorContent('Failed to fetch storage');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch storage');
+        }
+    }
+);
+
+/**
+ * eth_estimateGas - Estimate gas for transaction
+ */
+server.tool(
+    "cronos_zkevm_eth_estimate_gas",
+    {
+        from: z.string().optional().describe("Sender address"),
+        to: z.string().describe("Recipient address"),
+        value: z.string().optional().describe("Value to send (hex)"),
+        data: z.string().optional().describe("Transaction data (hex)")
+    },
+    async ({ from, to, value, data }) => {
+        try {
+            const params = new URLSearchParams({ to });
+            if (from) params.set('from', from);
+            if (value) params.set('value', value);
+            if (data) params.set('data', data);
+
+            const response = await fetch(`${CRONOS_ZKEVM_API}/eth-proxy/eth_estimateGas?${params}`);
+            if (!response.ok) return errorContent('Failed to estimate gas');
+
+            const result = await response.json();
+            return formatContent(result);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to estimate gas');
+        }
+    }
+);
+
+/**
+ * eth_gasPrice - Get current gas price
+ */
+server.tool(
+    "cronos_zkevm_eth_gas_price",
+    {},
+    async () => {
+        try {
+            const response = await fetch(`${CRONOS_ZKEVM_API}/eth-proxy/eth_gasPrice`);
+            if (!response.ok) return errorContent('Failed to fetch gas price');
+
+            const data = await response.json();
+            return formatContent(data);
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch gas price');
+        }
+    }
+);
+
+// ============================================
+// SECTION: HANDOFF SIGNING TOOLS
+// ============================================
+
+/**
+ * Pending transactions store (in-memory for MCP server)
+ * Production should use shared Redis/database
+ */
+const pendingTransactions = new Map<string, {
+    id: string;
+    createdAt: Date;
+    expiresAt: Date;
+    status: 'pending' | 'signed' | 'broadcast' | 'confirmed' | 'failed' | 'expired';
+    chainId: number;
+    to: string;
+    data: string;
+    value: string;
+    context: {
+        tool: string;
+        description?: string;
+        params: Record<string, unknown>;
+    };
+    txHash?: string;
+    blockNumber?: number;
+    errorMessage?: string;
+}>();
+
+function generateTransactionId(): string {
+    return `tx_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+/**
+ * Prepare a transaction for handoff signing
+ * Returns a signing URL instead of executing directly
+ */
+server.tool(
+    "handoff_prepare_transaction",
+    {
+        chainId: z.number().describe("Chain ID (25=mainnet, 338=testnet, 388=zkevm-mainnet, 240=zkevm-testnet)"),
+        to: z.string().describe("Recipient/contract address"),
+        data: z.string().describe("Transaction data (hex)"),
+        value: z.string().optional().describe("Value in wei (default: 0)"),
+        description: z.string().optional().describe("Human-readable description of this transaction")
+    },
+    async ({ chainId, to, data, value = "0", description }) => {
+        const id = generateTransactionId();
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes
+
+        const pending = {
+            id,
+            createdAt: now,
+            expiresAt,
+            status: 'pending' as const,
+            chainId,
+            to,
+            data,
+            value,
+            context: {
+                tool: 'handoff_prepare_transaction',
+                description,
+                params: { chainId, to, data, value }
+            }
+        };
+
+        pendingTransactions.set(id, pending);
+
+        const signingUrl = `${config.relayCoreApi}/sign/${id}`;
+
+        return formatContent({
+            success: true,
+            transactionId: id,
+            signingUrl,
+            expiresAt: expiresAt.toISOString(),
+            chainId,
+            description,
+            instructions: [
+                "1. Share the signing URL with the user",
+                "2. User opens URL and connects wallet",
+                "3. User signs the transaction",
+                "4. Use handoff_check_status to poll for completion"
+            ],
+            note: "Agent NEVER signs - user signs via their wallet"
+        });
+    }
+);
+
+/**
+ * Check status of a pending handoff transaction
+ */
+server.tool(
+    "handoff_check_status",
+    {
+        transactionId: z.string().describe("Transaction ID from handoff_prepare_transaction")
+    },
+    async ({ transactionId }) => {
+        const tx = pendingTransactions.get(transactionId);
+
+        if (!tx) {
+            return formatContent({
+                found: false,
+                error: "Transaction not found"
+            });
+        }
+
+        // Check if expired
+        if (tx.status === 'pending' && new Date() > tx.expiresAt) {
+            tx.status = 'expired';
+        }
+
+        return formatContent({
+            found: true,
+            transactionId: tx.id,
+            status: tx.status,
+            chainId: tx.chainId,
+            to: tx.to,
+            value: tx.value,
+            createdAt: tx.createdAt.toISOString(),
+            expiresAt: tx.expiresAt.toISOString(),
+            description: tx.context.description,
+            txHash: tx.txHash,
+            blockNumber: tx.blockNumber,
+            errorMessage: tx.errorMessage
+        });
+    }
+);
+
+/**
+ * Prepare ERC20 token transfer for handoff signing
+ */
+server.tool(
+    "handoff_prepare_erc20_transfer",
+    {
+        chainId: z.number().describe("Chain ID"),
+        tokenAddress: z.string().describe("ERC20 token contract address"),
+        recipient: z.string().describe("Recipient address"),
+        amount: z.string().describe("Amount in wei (use 1e18 for 18 decimal tokens)")
+    },
+    async ({ chainId, tokenAddress, recipient, amount }) => {
+        const iface = new ethers.Interface([
+            "function transfer(address to, uint256 amount) returns (bool)"
+        ]);
+        const data = iface.encodeFunctionData("transfer", [recipient, amount]);
+
+        const id = generateTransactionId();
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
+
+        const pending = {
+            id,
+            createdAt: now,
+            expiresAt,
+            status: 'pending' as const,
+            chainId,
+            to: tokenAddress,
+            data,
+            value: "0",
+            context: {
+                tool: 'handoff_prepare_erc20_transfer',
+                description: `Transfer tokens to ${recipient.slice(0, 10)}...`,
+                params: { chainId, tokenAddress, recipient, amount }
+            }
+        };
+
+        pendingTransactions.set(id, pending);
+
+        const signingUrl = `${config.relayCoreApi}/sign/${id}`;
+
+        return formatContent({
+            success: true,
+            transactionId: id,
+            signingUrl,
+            expiresAt: expiresAt.toISOString(),
+            tokenAddress,
+            recipient,
+            amount,
+            instructions: "Open signing URL to complete the transfer"
+        });
+    }
+);
+
+/**
+ * Prepare escrow session creation for handoff signing
+ */
+server.tool(
+    "handoff_prepare_escrow_create",
+    {
+        escrowAgent: z.string().describe("Escrow agent address (authorized to release funds)"),
+        maxSpend: z.string().describe("Maximum spend amount in USDC raw units (6 decimals)"),
+        durationSeconds: z.number().describe("Session duration in seconds"),
+        authorizedAgents: z.array(z.string()).describe("List of agent addresses authorized to receive payments")
+    },
+    async ({ escrowAgent, maxSpend, durationSeconds, authorizedAgents }) => {
+        const escrowContract = process.env.ESCROW_CONTRACT_ADDRESS;
+        if (!escrowContract) {
+            return errorContent("ESCROW_CONTRACT_ADDRESS not configured");
+        }
+
+        const iface = new ethers.Interface([
+            "function createSession(address escrowAgent, uint256 maxSpend, uint256 duration, address[] agents) returns (uint256)"
+        ]);
+        const data = iface.encodeFunctionData("createSession", [
+            escrowAgent,
+            maxSpend,
+            durationSeconds,
+            authorizedAgents
+        ]);
+
+        const id = generateTransactionId();
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
+
+        const pending = {
+            id,
+            createdAt: now,
+            expiresAt,
+            status: 'pending' as const,
+            chainId: config.cronos.testnet.chainId,
+            to: escrowContract,
+            data,
+            value: "0",
+            context: {
+                tool: 'handoff_prepare_escrow_create',
+                description: `Create escrow session (max: ${Number(maxSpend) / 1e6} USDC, ${authorizedAgents.length} agents)`,
+                params: { escrowAgent, maxSpend, durationSeconds, authorizedAgents }
+            }
+        };
+
+        pendingTransactions.set(id, pending);
+
+        const signingUrl = `${config.relayCoreApi}/sign/${id}`;
+
+        return formatContent({
+            success: true,
+            transactionId: id,
+            signingUrl,
+            expiresAt: expiresAt.toISOString(),
+            escrowContract,
+            escrowAgent,
+            maxSpend,
+            durationSeconds,
+            authorizedAgents,
+            instructions: "Open signing URL to create the session"
+        });
+    }
+);
+
+/**
+ * Prepare escrow deposit for handoff signing
+ */
+server.tool(
+    "handoff_prepare_escrow_deposit",
+    {
+        sessionId: z.string().describe("Session ID to deposit into"),
+        amount: z.string().describe("Amount in USDC raw units (6 decimals)")
+    },
+    async ({ sessionId, amount }) => {
+        const escrowContract = process.env.ESCROW_CONTRACT_ADDRESS;
+        if (!escrowContract) {
+            return errorContent("ESCROW_CONTRACT_ADDRESS not configured");
+        }
+
+        const iface = new ethers.Interface([
+            "function deposit(uint256 sessionId, uint256 amount)"
+        ]);
+        const data = iface.encodeFunctionData("deposit", [sessionId, amount]);
+
+        const id = generateTransactionId();
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
+
+        const pending = {
+            id,
+            createdAt: now,
+            expiresAt,
+            status: 'pending' as const,
+            chainId: config.cronos.testnet.chainId,
+            to: escrowContract,
+            data,
+            value: "0",
+            context: {
+                tool: 'handoff_prepare_escrow_deposit',
+                description: `Deposit ${Number(amount) / 1e6} USDC to session ${sessionId}`,
+                params: { sessionId, amount }
+            }
+        };
+
+        pendingTransactions.set(id, pending);
+
+        const signingUrl = `${config.relayCoreApi}/sign/${id}`;
+
+        return formatContent({
+            success: true,
+            transactionId: id,
+            signingUrl,
+            expiresAt: expiresAt.toISOString(),
+            sessionId,
+            amount,
+            amountUsdc: Number(amount) / 1e6,
+            instructions: "Open signing URL to deposit funds. Ensure token approval first."
+        });
+    }
+);
+
+/**
+ * Prepare escrow refund for handoff signing
+ */
+server.tool(
+    "handoff_prepare_escrow_refund",
+    {
+        sessionId: z.string().describe("Session ID to refund from")
+    },
+    async ({ sessionId }) => {
+        const escrowContract = process.env.ESCROW_CONTRACT_ADDRESS;
+        if (!escrowContract) {
+            return errorContent("ESCROW_CONTRACT_ADDRESS not configured");
+        }
+
+        const iface = new ethers.Interface([
+            "function refund(uint256 sessionId)"
+        ]);
+        const data = iface.encodeFunctionData("refund", [sessionId]);
+
+        const id = generateTransactionId();
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
+
+        const pending = {
+            id,
+            createdAt: now,
+            expiresAt,
+            status: 'pending' as const,
+            chainId: config.cronos.testnet.chainId,
+            to: escrowContract,
+            data,
+            value: "0",
+            context: {
+                tool: 'handoff_prepare_escrow_refund',
+                description: `Refund remaining balance from session ${sessionId}`,
+                params: { sessionId }
+            }
+        };
+
+        pendingTransactions.set(id, pending);
+
+        const signingUrl = `${config.relayCoreApi}/sign/${id}`;
+
+        return formatContent({
+            success: true,
+            transactionId: id,
+            signingUrl,
+            expiresAt: expiresAt.toISOString(),
+            sessionId,
+            instructions: "Open signing URL to refund remaining balance"
+        });
+    }
+);
+
+// ============================================
+// SECTION: NETWORK & FEEMARKET TOOLS
+// ============================================
+
+/**
+ * Get network information
+ */
+server.tool(
+    "network_info",
+    {
+        network: z.enum(['mainnet', 'testnet', 'zkevm-mainnet', 'zkevm-testnet']).default('testnet')
+    },
+    async ({ network }) => {
+        try {
+            const networkConfig = config.cronos[network];
+            const [blockNumber, chainId, gasPrice] = await Promise.all([
+                cronosRpc('eth_blockNumber', [], network),
+                cronosRpc('eth_chainId', [], network),
+                cronosRpc('eth_gasPrice', [], network)
+            ]);
+
+            return formatContent({
+                network,
+                chainId: parseInt(chainId, 16),
+                currentBlock: parseInt(blockNumber, 16),
+                gasPrice: {
+                    wei: parseInt(gasPrice, 16),
+                    gwei: parseInt(gasPrice, 16) / 1e9
+                },
+                rpcUrl: networkConfig.rpc,
+                explorer: networkConfig.explorer
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch network info');
+        }
+    }
+);
+
+/**
+ * Get fee history (EIP-1559)
+ */
+server.tool(
+    "feemarket_get_fee_history",
+    {
+        network: z.enum(['mainnet', 'testnet', 'zkevm-mainnet', 'zkevm-testnet']).default('testnet'),
+        blockCount: z.number().default(4).describe("Number of blocks to fetch (max 10)"),
+        rewardPercentiles: z.array(z.number()).default([25, 50, 75]).describe("Reward percentiles")
+    },
+    async ({ network, blockCount, rewardPercentiles }) => {
+        try {
+            const result = await cronosRpc('eth_feeHistory', [
+                `0x${Math.min(blockCount, 10).toString(16)}`,
+                'latest',
+                rewardPercentiles
+            ], network);
+
+            return formatContent({
+                network,
+                baseFeePerGas: result.baseFeePerGas?.map((fee: string) => ({
+                    hex: fee,
+                    wei: parseInt(fee, 16),
+                    gwei: parseInt(fee, 16) / 1e9
+                })),
+                gasUsedRatio: result.gasUsedRatio,
+                oldestBlock: parseInt(result.oldestBlock, 16),
+                reward: result.reward
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch fee history');
+        }
+    }
+);
+
+/**
+ * Get transaction count (nonce)
+ */
+server.tool(
+    "tx_get_count",
+    {
+        address: z.string().describe("Wallet address"),
+        network: z.enum(['mainnet', 'testnet', 'zkevm-mainnet', 'zkevm-testnet']).default('testnet')
+    },
+    async ({ address, network }) => {
+        try {
+            const result = await cronosRpc('eth_getTransactionCount', [address, 'latest'], network);
+            return formatContent({
+                address,
+                network,
+                nonce: parseInt(result, 16),
+                nonceHex: result
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch transaction count');
+        }
+    }
+);
+
+/**
+ * Get event logs
+ */
+server.tool(
+    "event_get_logs",
+    {
+        network: z.enum(['mainnet', 'testnet', 'zkevm-mainnet', 'zkevm-testnet']).default('testnet'),
+        address: z.string().optional().describe("Contract address to filter"),
+        topics: z.array(z.string().nullable()).optional().describe("Topic filters"),
+        fromBlock: z.string().optional().default('latest').describe("From block (hex or 'latest')"),
+        toBlock: z.string().optional().default('latest').describe("To block (hex or 'latest')")
+    },
+    async ({ network, address, topics, fromBlock, toBlock }) => {
+        try {
+            const params: Record<string, unknown> = {};
+            if (address) params.address = address;
+            if (topics) params.topics = topics;
+            params.fromBlock = fromBlock;
+            params.toBlock = toBlock;
+
+            const result = await cronosRpc('eth_getLogs', [params], network);
+
+            return formatContent({
+                network,
+                logsCount: result.length,
+                logs: result.slice(0, 50).map((log: any) => ({
+                    address: log.address,
+                    topics: log.topics,
+                    data: log.data,
+                    blockNumber: parseInt(log.blockNumber, 16),
+                    transactionHash: log.transactionHash,
+                    logIndex: parseInt(log.logIndex, 16)
+                })),
+                truncated: result.length > 50
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to fetch logs');
+        }
+    }
+);
+
+// ============================================
+// SECTION: VVS SWAP TOOLS
+// ============================================
+
+/**
+ * Get VVS swap quote (read-only, no signing required)
+ */
+server.tool(
+    "vvs_get_quote",
+    {
+        inputToken: z.string().describe("Input token address or 'NATIVE' for CRO"),
+        outputToken: z.string().describe("Output token address or 'NATIVE' for CRO"),
+        amount: z.string().describe("Amount to swap (human-readable, e.g., '1.5')"),
+        network: z.enum(['mainnet', 'testnet']).default('testnet')
+    },
+    async ({ inputToken, outputToken, amount, network }) => {
+        try {
+            // This would use the VVS SDK - for now return informative response
+            const chainId = network === 'mainnet' ? 25 : 338;
+
+            return formatContent({
+                status: "quote_request",
+                inputToken,
+                outputToken,
+                amount,
+                chainId,
+                vvsRouterAddress: "0x145863Eb42Cf62847A6Ca784e6416C1682b1b2Ae",
+                vvsFactoryAddress: "0x3b44b2a187a7b3824131f8db5a74194d0a42fc15",
+                wcroAddress: "0x5C7F8A570d578ED84E63fdFA7b1eE72dEae1AE23",
+                note: "Full VVS SDK integration available via @vvs-finance/swap-sdk",
+                instructions: [
+                    "1. Install: npm install @vvs-finance/swap-sdk",
+                    "2. Use fetchBestTrade() to get optimal route",
+                    "3. Use handoff_prepare_transaction to create signing URL"
+                ]
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to get VVS quote');
+        }
+    }
+);
+
+// ============================================
+// SECTION: ESCROW SESSION QUERY TOOLS (READ-ONLY)
+// ============================================
+
+/**
+ * Get escrow session status from database/contract
+ */
+server.tool(
+    "escrow_get_session",
+    {
+        sessionId: z.string().describe("Session ID (uint256 as string)"),
+        network: z.enum(['mainnet', 'testnet']).default('testnet')
+    },
+    async ({ sessionId, network }) => {
+        try {
+            const chainId = network === 'mainnet' ? 25 : 338;
+            const networkConfig = network === 'mainnet'
+                ? config.cronos.mainnet
+                : config.cronos.testnet;
+
+            // Call contract for live data
+            const escrowAddress = process.env.ESCROW_CONTRACT_ADDRESS;
+            if (!escrowAddress) {
+                return errorContent('ESCROW_CONTRACT_ADDRESS not configured');
+            }
+
+            const data = '0x' +
+                'c6def076' + // getSession(uint256) selector - keccak256("getSession(uint256)")[:8]
+                sessionId.padStart(64, '0');
+
+            const result = await cronosRpc('eth_call', [{
+                to: escrowAddress,
+                data
+            }, 'latest'], network);
+
+            // Parse result (owner, escrowAgent, deposited, released, remaining, maxSpend, expiry, active)
+            if (result && result !== '0x') {
+                // Basic decode - in production use ethers.AbiCoder
+                return formatContent({
+                    sessionId,
+                    chainId,
+                    contractAddress: escrowAddress,
+                    rawData: result,
+                    note: "Use ethers.AbiCoder to decode: (address,address,uint256,uint256,uint256,uint256,uint256,bool)"
+                });
+            }
+
+            return formatContent({
+                sessionId,
+                chainId,
+                status: "not_found",
+                contractAddress: escrowAddress
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to get session');
+        }
+    }
+);
+
+/**
+ * Check if agent is authorized for session
+ */
+server.tool(
+    "escrow_check_authorization",
+    {
+        sessionId: z.string().describe("Session ID (uint256 as string)"),
+        agentAddress: z.string().describe("Agent wallet address"),
+        network: z.enum(['mainnet', 'testnet']).default('testnet')
+    },
+    async ({ sessionId, agentAddress, network }) => {
+        try {
+            const escrowAddress = process.env.ESCROW_CONTRACT_ADDRESS;
+            if (!escrowAddress) {
+                return errorContent('ESCROW_CONTRACT_ADDRESS not configured');
+            }
+
+            // isAgentAuthorized(uint256,address) selector
+            const selector = '0x' + '7b04a2d0'; // keccak256("isAgentAuthorized(uint256,address)")[:8]
+            const data = selector +
+                sessionId.padStart(64, '0') +
+                agentAddress.toLowerCase().replace('0x', '').padStart(64, '0');
+
+            const result = await cronosRpc('eth_call', [{
+                to: escrowAddress,
+                data
+            }, 'latest'], network);
+
+            const isAuthorized = result && result !== '0x' && parseInt(result, 16) === 1;
+
+            return formatContent({
+                sessionId,
+                agentAddress,
+                isAuthorized,
+                contractAddress: escrowAddress,
+                network
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to check authorization');
+        }
+    }
+);
+
+/**
+ * Get remaining balance in escrow session
+ */
+server.tool(
+    "escrow_get_balance",
+    {
+        sessionId: z.string().describe("Session ID (uint256 as string)"),
+        network: z.enum(['mainnet', 'testnet']).default('testnet')
+    },
+    async ({ sessionId, network }) => {
+        try {
+            const escrowAddress = process.env.ESCROW_CONTRACT_ADDRESS;
+            if (!escrowAddress) {
+                return errorContent('ESCROW_CONTRACT_ADDRESS not configured');
+            }
+
+            // remainingBalance(uint256) selector
+            const selector = '0x' + '3c8b4e48'; // keccak256("remainingBalance(uint256)")[:8]
+            const data = selector + sessionId.padStart(64, '0');
+
+            const result = await cronosRpc('eth_call', [{
+                to: escrowAddress,
+                data
+            }, 'latest'], network);
+
+            const balance = result ? BigInt(result) : BigInt(0);
+
+            return formatContent({
+                sessionId,
+                remainingBalance: {
+                    raw: balance.toString(),
+                    usdc: (Number(balance) / 1e6).toFixed(6)
+                },
+                contractAddress: escrowAddress,
+                network
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to get balance');
+        }
+    }
+);
+
+/**
+ * Get agent spend in session
+ */
+server.tool(
+    "escrow_get_agent_spend",
+    {
+        sessionId: z.string().describe("Session ID (uint256 as string)"),
+        agentAddress: z.string().describe("Agent wallet address"),
+        network: z.enum(['mainnet', 'testnet']).default('testnet')
+    },
+    async ({ sessionId, agentAddress, network }) => {
+        try {
+            const escrowAddress = process.env.ESCROW_CONTRACT_ADDRESS;
+            if (!escrowAddress) {
+                return errorContent('ESCROW_CONTRACT_ADDRESS not configured');
+            }
+
+            // getAgentSpend(uint256,address) selector
+            const selector = '0x' + '9e8f0543'; // keccak256("getAgentSpend(uint256,address)")[:8]
+            const data = selector +
+                sessionId.padStart(64, '0') +
+                agentAddress.toLowerCase().replace('0x', '').padStart(64, '0');
+
+            const result = await cronosRpc('eth_call', [{
+                to: escrowAddress,
+                data
+            }, 'latest'], network);
+
+            const spent = result ? BigInt(result) : BigInt(0);
+
+            return formatContent({
+                sessionId,
+                agentAddress,
+                amountSpent: {
+                    raw: spent.toString(),
+                    usdc: (Number(spent) / 1e6).toFixed(6)
+                },
+                contractAddress: escrowAddress,
+                network
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to get agent spend');
+        }
+    }
+);
+
+/**
+ * Get total session count from contract
+ */
+server.tool(
+    "escrow_get_session_count",
+    {
+        network: z.enum(['mainnet', 'testnet']).default('testnet')
+    },
+    async ({ network }) => {
+        try {
+            const escrowAddress = process.env.ESCROW_CONTRACT_ADDRESS;
+            if (!escrowAddress) {
+                return errorContent('ESCROW_CONTRACT_ADDRESS not configured');
+            }
+
+            // sessionCounter() selector
+            const selector = '0x' + '6c8b703f'; // keccak256("sessionCounter()")[:8]
+
+            const result = await cronosRpc('eth_call', [{
+                to: escrowAddress,
+                data: selector
+            }, 'latest'], network);
+
+            const count = result ? Number(BigInt(result)) : 0;
+
+            return formatContent({
+                totalSessions: count,
+                contractAddress: escrowAddress,
+                network
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to get session count');
+        }
+    }
+);
+
+// ============================================
+// SECTION: GENERIC CONTRACT INTERACTION
+// ============================================
+
+/**
+ * Call any contract view function
+ */
+server.tool(
+    "contract_call",
+    {
+        contractAddress: z.string().describe("Contract address"),
+        data: z.string().describe("Encoded function call data (hex)"),
+        network: z.enum(['mainnet', 'testnet', 'zkevm-mainnet', 'zkevm-testnet']).default('testnet')
+    },
+    async ({ contractAddress, data, network }) => {
+        try {
+            const result = await cronosRpc('eth_call', [{
+                to: contractAddress,
+                data
+            }, 'latest'], network);
+
+            return formatContent({
+                contractAddress,
+                network,
+                result,
+                resultDecimal: result && result !== '0x' ? BigInt(result).toString() : '0'
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Contract call failed');
+        }
+    }
+);
+
+/**
+ * Get contract bytecode to verify it exists
+ */
+server.tool(
+    "contract_get_code",
+    {
+        contractAddress: z.string().describe("Contract address"),
+        network: z.enum(['mainnet', 'testnet', 'zkevm-mainnet', 'zkevm-testnet']).default('testnet')
+    },
+    async ({ contractAddress, network }) => {
+        try {
+            const result = await cronosRpc('eth_getCode', [contractAddress, 'latest'], network);
+
+            const hasCode = result && result !== '0x' && result.length > 2;
+
+            return formatContent({
+                contractAddress,
+                network,
+                isContract: hasCode,
+                bytecodeLength: hasCode ? (result.length - 2) / 2 : 0,
+                bytecodePrefix: hasCode ? result.substring(0, 66) + '...' : null
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to get contract code');
+        }
+    }
+);
+
+/**
+ * Get storage at specific slot
+ */
+server.tool(
+    "contract_get_storage",
+    {
+        contractAddress: z.string().describe("Contract address"),
+        slot: z.string().describe("Storage slot (hex)"),
+        network: z.enum(['mainnet', 'testnet', 'zkevm-mainnet', 'zkevm-testnet']).default('testnet')
+    },
+    async ({ contractAddress, slot, network }) => {
+        try {
+            const result = await cronosRpc('eth_getStorageAt', [contractAddress, slot, 'latest'], network);
+
+            return formatContent({
+                contractAddress,
+                slot,
+                network,
+                value: result,
+                valueDecimal: result && result !== '0x' ? BigInt(result).toString() : '0'
+            });
+        } catch (error) {
+            return errorContent(error instanceof Error ? error.message : 'Failed to get storage');
+        }
+    }
+);
+
 // START SERVER
 
 
@@ -2724,6 +5124,14 @@ async function startServer() {
     } else {
         console.error(`   x402 Wallet: Not configured`);
     }
+
+    // Register Cronos Developer Platform SDK tools
+    registerCronosSDKTools(server);
+    console.error(`   Developer Platform API: ${process.env.DEVELOPER_PLATFORM_API_KEY ? 'Configured' : 'Not configured'}`);
+
+    // Register RWA State Machine tools
+    registerRWATools(server);
+    console.error(`   RWA Tools: Registered (API: ${process.env.RELAY_CORE_API || 'http://localhost:3001'})`);
 
     if (config.http.enabled) {
         // HTTP Mode - for Claude Web and API access

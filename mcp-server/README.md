@@ -1,197 +1,234 @@
 # Relay Core MCP Server
 
-Unified Model Context Protocol (MCP) server for the Relay Core ecosystem, providing structured access to:
+Model Context Protocol server providing structured access to Cronos blockchain, Crypto.com Exchange API, and Relay Core payment infrastructure. Enables AI agents to discover services, execute x402 payments, query on-chain state, and access market data through 60+ tools.
 
-- **Crypto.com Exchange API** - Market data, orderbooks, candlesticks
-- **Cronos Blockchain** - Native chain integration (mainnet + testnet)
-- **Relay Core Services** - Agents, quotes, venues, reputation, x402 payments
+## Server Architecture
 
-## Quick Start
+The MCP server operates as a stdio-based tool provider exposing three integration layers:
 
-```bash
-# Install dependencies
-npm install
+**Crypto.com Exchange Integration**
+- Real-time ticker data (price, volume, bid/ask spreads)
+- Order book depth with configurable levels
+- OHLCV candlestick data with multiple timeframes
+- Trading pair enumeration
 
-# Copy environment template
-cp .env.example .env
+**Cronos Blockchain Integration**
+- Block queries (number, details, transactions)
+- Account balance checks (CRO and ERC-20 tokens)
+- Transaction lookups by hash
+- Smart contract read calls
+- Event log retrieval
+- Gas price estimation
 
-# Edit .env with your API keys
-vim .env
+**Relay Core Services Integration**
+- Agent discovery with reputation filtering
+- Service registration and search
+- x402 payment settlement
+- Session management (create, activate, query)
+- RWA state transitions
+- Reputation score queries
 
-# Run the server
-npm run dev
-```
+## Tool Categories
 
-## Integration with Claude Code
+### x402 Payments (3 tools)
 
-```bash
-# Add Relay Core MCP to Claude Code
-claude mcp add relaycore 'npx tsx /path/to/relaycore/mcp-server/index.ts'
+**wallet_status**
+Returns wallet address, CRO balance, USDC balance, and auto-pay configuration.
 
-# Verify
-claude mcp list
+**pay**
+Settles x402 payment via Facilitator SDK. Requires payment header and requirements from 402 response.
 
-# Open Claude and use the tools
-claude
-```
+**get_quote_with_payment**
+Fetches perpetual DEX quote with automatic payment handling.
 
----
+### Services (9 tools)
 
-## 🔐 API Key Authentication
+**list_services**
+Returns all registered services with filtering by category, type, and active status.
 
-Relay Core uses API keys for SDK and programmatic access. This ensures:
-- **Secure access** to protected endpoints
-- **Rate limiting** per developer (100 req/hour default)
-- **Permission control** (read vs write operations)
-- **Usage tracking** for analytics
+**register_service**
+Registers new service with name, endpoint, pricing, and metadata.
 
-### Obtaining an API Key
+**deactivate_service**
+Deactivates service by ID.
 
-1. **Connect wallet** at https://relaycore.xyz/dashboard
-2. Navigate to **Settings → API Keys**
-3. Click **Generate API Key**
-4. Copy the key immediately (shown once only!)
+**search_services**
+Searches services by category, type, or keyword.
 
-### Using API Keys
+**get_service_details**
+Returns full service configuration including SLA terms.
 
-**In SDK:**
-```typescript
-import { createAgentSDK } from '@relaycore/sdk';
+**update_service**
+Updates service metadata and pricing.
 
-const sdk = createAgentSDK({
-    apiKey: 'rc_xxxxx',           // Your API key
-    walletAddress: '0x1234...',    // Your wallet address
-});
+**get_service_metrics**
+Returns call count, success rate, and latency statistics.
 
-// All SDK calls are now authenticated
-const agents = await sdk.discoverAgents('oracle', 80);
-```
+**get_service_reputation**
+Returns reputation score with trend analysis.
 
-**In HTTP Requests:**
-```bash
-# Using Authorization header
-curl https://api.relaycore.xyz/agents \
-  -H "Authorization: Bearer rc_xxxxx"
+**list_service_categories**
+Enumerates available service categories.
 
-# Or using x-api-key header
-curl https://api.relaycore.xyz/agents \
-  -H "x-api-key: rc_xxxxx"
-```
+### Reputation (6 tools)
 
-**In MCP Tools:**
-```
-> Use relay_discover_services with API key rc_xxxxx
-```
+**get_reputation_score**
+Returns agent reputation score with success rate and volume metrics.
 
-### API Key Permissions
+**submit_feedback**
+Records feedback with rating, comment, and proof hash.
 
-| Permission | Description | Default |
-|------------|-------------|---------|
-| `read_services` | Query services and agents | ✅ |
-| `read_reputation` | Query reputation scores | ✅ |
-| `read_outcomes` | View payment outcomes | ✅ |
-| `read_payments` | View payment history | ✅ |
-| `execute_payments` | Execute x402 payments | ❌ |
-| `register_agents` | Register new agents | ✅ |
+**get_feedback_history**
+Returns all feedback submissions for an agent.
 
-Note: `execute_payments` requires wallet signature and cannot be done via API key alone.
+**get_reputation_trend**
+Returns historical reputation data with time series.
 
----
+**get_top_agents**
+Returns highest-rated agents by category.
 
-## Available Tools (26+ total)
+**verify_feedback**
+Verifies feedback proof hash against on-chain record.
 
-### Crypto.com Exchange API (4 tools)
+### Agents (7 tools)
 
-| Tool | Description |
-|------|-------------|
-| `crypto_com_get_ticker` | Get real-time ticker (price, volume, bid/ask) |
-| `crypto_com_get_orderbook` | Get order book (bids/asks) |
-| `crypto_com_get_candlestick` | Get OHLCV candlestick data |
-| `crypto_com_get_instruments` | List available trading pairs |
+**list_agents**
+Returns all registered agents with filtering by type and status.
 
-**Example:**
-```
-> Get the BTC_USDT ticker from Crypto.com
-> Show me the ETH_USDT order book with 20 levels
-> Get 1-hour candles for CRO_USDT
-```
+**register_agent**
+Mints agent NFT with IPFS metadata on IdentityRegistry contract.
 
-### Cronos Blockchain (9 tools)
+**update_agent**
+Updates agent metadata URI.
 
-| Tool | Description |
-|------|-------------|
-| `cronos_block_number` | Get current block number |
-| `cronos_get_block` | Get block details by number |
-| `cronos_get_balance` | Get CRO balance for address |
-| `cronos_get_transaction` | Get transaction by hash |
-| `cronos_get_nonce` | Get transaction count (nonce) |
-| `cronos_gas_price` | Get current gas price |
-| `cronos_call_contract` | Read smart contract (view function) |
-| `cronos_token_balance` | Get ERC-20 token balance |
-| `cronos_get_logs` | Get contract event logs |
+**deactivate_agent**
+Deactivates agent by ID.
 
-**Example:**
-```
-> What's the current block on Cronos testnet?
-> Check the CRO balance for 0x1234...
-> Get gas prices on Cronos mainnet
-> What's my USDC balance on 0xTokenAddress?
-```
+**get_agent_info**
+Returns agent details including NFT token ID and metadata.
 
-### Relay Core Services (8 tools)
+**search_agents**
+Searches agents by capability or service type.
 
-| Tool | x402 | Description |
-|------|------|-------------|
-| `relay_get_prices` | ❌ | Multi-DEX aggregated prices |
-| `relay_discover_services` | ❌ | Find services by category |
-| `relay_get_quote` | ✅ | Get trade quote (payment required) |
-| `relay_venue_rankings` | ❌ | DEX venues by reputation |
-| `relay_funding_rates` | ❌ | Current funding rates |
-| `relay_get_reputation` | ❌ | Entity reputation score |
-| `relay_x402_info` | ❌ | Get x402 payment requirements |
-| `relay_invoke_agent` | ✅ | Execute an agent |
+**get_agent_activity**
+Returns agent execution history with outcomes.
 
-**Example:**
-```
-> Get aggregated prices for BTC, ETH, CRO
-> Find oracle services with reputation > 80
-> Get a quote for 10x long on ETH worth $1000
-> Show me the top trading venues by volume
-```
+### ACPS (7 tools)
 
-### On-Chain Registry (4 tools)
+**create_session**
+Creates escrow session with max spend, duration, and authorized agents.
 
-| Tool | Description |
-|------|-------------|
-| `relay_register_agent` | Register agent on IdentityRegistry |
-| `relay_get_agent_info` | Get agent details by ID |
-| `relay_submit_feedback` | Submit feedback to ReputationRegistry |
-| `relay_get_agent_score` | Get agent's reputation score |
+**can_execute**
+Checks if agent can execute with payment from session.
 
-**Example:**
-```
-> Register a new agent with name "My Oracle"
-> Get info for agent ID 1
-> Submit feedback score 95 for agent ID 1
-```
+**release_payment**
+Releases payment from session to agent (escrow agent only).
 
-### AI Analysis (1 tool)
+**refund_session**
+Refunds remaining balance to session owner.
 
-| Tool | Description |
-|------|-------------|
-| `ai_analyze` | Claude-powered analysis of DeFi data |
+**get_session_state**
+Returns session balance, spending, and expiration.
 
-**Example:**
-```
-> Analyze current market conditions for CRO
-> Explain the x402 payment flow
-```
+**list_sessions**
+Returns all sessions for an owner.
 
----
+**close_session**
+Deactivates session and triggers refund.
+
+### RWA (11 tools)
+
+**state_create**
+Creates RWA asset with initial metadata.
+
+**state_transition**
+Transitions asset state with proof and agent signature.
+
+**list_all_assets**
+Returns all RWA assets with current state.
+
+**verify_proof**
+Verifies execution proof against SLA terms.
+
+**get_asset_state**
+Returns current state and transition history.
+
+**register_rwa_service**
+Registers RWA service with SLA terms.
+
+**request_execution**
+Requests off-chain execution with escrow lock.
+
+**submit_proof**
+Submits execution proof for verification.
+
+**settle_execution**
+Settles execution based on proof verification.
+
+**get_execution_status**
+Returns execution request status.
+
+**list_rwa_services**
+Returns all registered RWA services.
+
+### Trading (9 tools)
+
+**get_price**
+Fetches Pyth oracle price for asset.
+
+**get_quote**
+Aggregates quotes from 6 perpetual DEX venues.
+
+**execute_trade**
+Routes trade to best venue.
+
+**get_venues**
+Returns all DEX venues with metrics.
+
+**get_funding_rates**
+Returns current funding rates across venues.
+
+**get_position_history**
+Returns user position history.
+
+**get_trade_history**
+Returns user trade history.
+
+**get_liquidity**
+Returns venue liquidity depth.
+
+**get_market_stats**
+Returns 24h volume and price statistics.
+
+### Analytics (8 tools)
+
+**provider_stats**
+Returns service provider call count, revenue, and success rate.
+
+**market_data**
+Returns DEX market data with volume and liquidity.
+
+**health_check**
+Returns system health status for all services.
+
+**get_indexer_status**
+Returns indexer sync status and last block.
+
+**get_payment_history**
+Returns x402 payment history with settlement status.
+
+**get_session_analytics**
+Returns session usage statistics.
+
+**get_reputation_leaderboard**
+Returns top agents by reputation score.
+
+**get_system_metrics**
+Returns system-wide metrics (total payments, active sessions, registered agents).
 
 ## x402 Payment Flow
 
-When a tool requires payment (like `relay_get_quote`), it returns:
+When a tool requires payment, it returns a 402 status with payment requirements:
 
 ```json
 {
@@ -208,120 +245,204 @@ When a tool requires payment (like `relay_get_quote`), it returns:
 }
 ```
 
-**Flow:**
+**Settlement Process**
 1. Tool returns `payment_required` status
-2. Use `relay_x402_info` to get full payment details
-3. Complete the on-chain USDC transfer
-4. Retry the tool with `paymentId` parameter
+2. Client retrieves full payment details via `relay_x402_info`
+3. Client creates EIP-3009 authorization and signs with wallet
+4. Client submits to settlement endpoint with payment header
+5. Facilitator SDK verifies signature and settles USDC transfer on-chain
+6. Client retries tool with `paymentId` parameter
+7. Tool executes and returns result
 
----
+## API Key Authentication
 
-## Environment Variables
+All service and agent tools require API key authentication for rate limiting and permission control.
+
+**Obtaining API Key**
+1. Connect wallet at dashboard
+2. Navigate to Settings → API Keys
+3. Click Generate API Key
+4. Copy key immediately (displayed once)
+
+**Using API Key**
+
+In MCP tools:
+```
+Use relay_discover_services with API key rc_xxxxx
+```
+
+In HTTP requests:
+```bash
+curl https://api.relaycore.xyz/agents \
+  -H "Authorization: Bearer rc_xxxxx"
+```
+
+In SDK:
+```typescript
+const sdk = createAgentSDK({
+  apiKey: 'rc_xxxxx',
+  walletAddress: '0x...'
+});
+```
+
+**Permissions**
+
+| Permission | Description | Default |
+|------------|-------------|---------|
+| `read_services` | Query services and agents | Yes |
+| `read_reputation` | Query reputation scores | Yes |
+| `read_outcomes` | View payment outcomes | Yes |
+| `read_payments` | View payment history | Yes |
+| `execute_payments` | Execute x402 payments | No |
+| `register_agents` | Register new agents | Yes |
+
+Note: `execute_payments` requires wallet signature and cannot be performed via API key alone.
+
+## Environment Configuration
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `RELAY_CORE_API_URL` | No | Relay Core backend (default: localhost:4000) |
+| `RELAY_CORE_API_URL` | No | Backend URL (default: localhost:4000) |
 | `RELAY_CORE_API_KEY` | No | API key for authenticated access |
-| `CLAUDE_API_KEY` | No | Anthropic API key (for `ai_analyze`) |
+| `CLAUDE_API_KEY` | No | Anthropic API key for ai_analyze tool |
 | `CRONOS_RPC_URL` | No | Custom Cronos RPC endpoint |
-| `CRONOSCAN_API_KEY` | No | Cronoscan API key (higher rate limits) |
+| `CRONOSCAN_API_KEY` | No | Cronoscan API key for higher rate limits |
 | `PYTH_PRICE_SERVICE_URL` | No | Custom Pyth endpoint |
+| `WALLET_PRIVATE_KEY` | No | Wallet for signing transactions |
+| `ESCROW_CONTRACT_ADDRESS` | No | EscrowSession contract address |
 
----
+## Installation and Setup
 
-## Architecture
+**Prerequisites**
+- Node.js 20+
+- npm or pnpm
 
-```
-┌────────────────────────────────────────────────────────────┐
-│                    Claude Code / MCP Client                │
-└──────────────────────────┬─────────────────────────────────┘
-                           │ stdio
-┌──────────────────────────▼─────────────────────────────────┐
-│                   Relay Core MCP Server                    │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │                   Tool Registry                      │  │
-│  │  ┌────────────┐ ┌────────────┐ ┌─────────────────┐   │  │
-│  │  │ Crypto.com │ │   Cronos   │ │   Relay Core    │   │  │
-│  │  │  4 tools   │ │  9 tools   │ │    8+ tools     │   │  │
-│  │  └────────────┘ └────────────┘ └─────────────────┘   │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                                                            │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │              API Key Authentication                  │  │
-│  │  - Validates rc_xxxxx API keys                       │  │
-│  │  - Rate limiting (100 req/hour)                      │  │
-│  │  - Permission checking                               │  │
-│  └──────────────────────────────────────────────────────┘  │
-└────────┬────────────────────┬────────────────────┬─────────┘
-         │                    │                    │
-   ┌─────▼─────┐        ┌─────▼─────┐       ┌──────▼──────┐
-   │ Crypto.com│        │  Cronos   │       │ Relay Core  │
-   │ Exchange  │        │   RPC     │       │    API      │
-   │   API     │        │           │       │             │
-   └───────────┘        └───────────┘       └─────────────┘
+**Install Dependencies**
+```bash
+npm install
 ```
 
----
+**Configure Environment**
+```bash
+cp .env.example .env
+# Edit .env with your API keys
+```
+
+**Build**
+```bash
+npm run build
+```
+
+**Run Server**
+```bash
+npm run dev
+```
+
+## Claude Desktop Integration
+
+Add to Claude Desktop configuration file:
+
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "relay-core": {
+      "command": "node",
+      "args": ["/path/to/relaycore/mcp-server/dist/index.js"],
+      "env": {
+        "RELAY_CORE_API_URL": "http://localhost:4000",
+        "RELAY_CORE_API_KEY": "rc_xxxxx",
+        "WALLET_PRIVATE_KEY": "your-key",
+        "ESCROW_CONTRACT_ADDRESS": "0x9D340a67ddD4Fcf5eC590b7B67e1fE8d020F7D61"
+      }
+    }
+  }
+}
+```
+
+**Verify Installation**
+```bash
+claude mcp list
+```
 
 ## Cronos Network Configuration
 
 | Network | Chain ID | RPC Endpoint |
 |---------|----------|--------------|
-| Mainnet | 25 | `https://evm.cronos.org` |
-| Testnet | 338 | `https://evm-t3.cronos.org` |
+| Mainnet | 25 | https://evm.cronos.org |
+| Testnet | 338 | https://evm-t3.cronos.org |
 
-Tools support both networks via the `network` parameter:
+Tools support both networks via `network` parameter:
 ```
-> Get balance for 0x... on mainnet
-> Check gas price on testnet
+Get balance for 0x... on mainnet
+Check gas price on testnet
 ```
 
----
+## Example Usage
+
+**Market Data Query**
+```
+User: What's the current BTC price on Crypto.com?
+
+Claude: [Uses crypto_com_get_ticker tool]
+BTC/USDT: $97,234.50
+24h High: $98,100.00
+24h Low: $96,500.00
+24h Volume: 1,234.56 BTC
+```
+
+**Service Discovery**
+```
+User: Find oracle services with reputation above 80
+
+Claude: [Uses relay_discover_services tool with API key]
+Found 3 oracle services:
+1. PerpAI Quote Agent - Score: 95 - $0.01/request
+2. Pyth Price Feed - Score: 88 - Free
+3. Chainlink Oracle - Score: 92 - $0.05/request
+```
+
+**Agent Registration**
+```
+User: Register my agent as a data provider
+
+Claude: [Uses relay_register_agent tool]
+Agent registered on Cronos Testnet
+Agent ID: 2
+IPFS: ipfs://bafybei...
+TX: 0x1234...
+```
+
+**x402 Payment**
+```
+User: Get a quote for 10x long ETH with $1000
+
+Claude: [Uses relay_get_quote tool]
+Payment required: 0.01 USDC
+[User approves payment]
+Quote: Entry $2,450.50, Liquidation $2,205.45
+Estimated funding: -0.02% per 8h
+```
 
 ## Development
 
+**Build TypeScript**
 ```bash
-# Build TypeScript
 npm run build
+```
 
-# Run built version
+**Run Built Version**
+```bash
 npm start
+```
 
-# Run in development mode (with hot reload)
+**Development Mode with Hot Reload**
+```bash
 npm run dev
 ```
-
----
-
-## Example Session
-
-```
-You: What's the current BTC price on Crypto.com?
-
-Claude: [Uses crypto_com_get_ticker tool]
-The current BTC/USDT price on Crypto.com is $97,234.50
-- 24h High: $98,100.00
-- 24h Low: $96,500.00  
-- 24h Volume: 1,234.56 BTC
-
-You: Find me oracle services with good reputation
-
-Claude: [Uses relay_discover_services tool with API key]
-Found 3 oracle services with reputation > 80:
-1. PerpAI Quote Agent (ID: 1) - Score: 95 - $0.01/request
-2. Pyth Price Feed - Score: 88 - Free
-3. Chainlink Oracle - Score: 92 - $0.05/request
-
-You: Register my agent as a data provider
-
-Claude: [Uses relay_register_agent tool]
-✅ Agent registered on Cronos Testnet!
-- Agent ID: 2
-- IPFS: ipfs://bafybei...
-- TX: 0x1234...
-```
-
----
 
 ## License
 
