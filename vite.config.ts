@@ -8,6 +8,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "node:crypto": path.resolve(__dirname, "./src/lib/polyfills/crypto-polyfill.ts"),
+      "crypto": path.resolve(__dirname, "./src/lib/polyfills/crypto-polyfill.ts"),
     },
   },
   server: {
@@ -55,13 +57,13 @@ export default defineConfig({
         'node:fs',
         'node:fs/promises',
         'node:path',
-        'node:crypto',
+        // 'node:crypto',
         'node:http',
         'node:https',
         'node:url',
         'node:stream',
         'stream',
-        'crypto',
+        // 'crypto',
         'http',
         'https',
         'url',
