@@ -1,102 +1,595 @@
 ---
-title: RWA Settlement
-description: Real-world asset settlement with SLA verification
+title: RWA Settlement Flow
+description: Real-world asset settlement with SLA verification and proof-based payment release
 ---
 
 ## Overview
 
-RWA settlement handles off-chain service execution with on-chain payment settlement. Services register with SLA terms, agents request execution, providers submit proofs, and settlement occurs based on SLA compliance.
+RWA (Real-World Asset) settlement enables **off-chain service execution** with **on-chain payment settlement**. Services register with SLA terms, agents request execution, providers submit cryptographic proofs, and payments are released or refunded based on SLA compliance.
 
-## Settlement Flow
+**Key Insight**: RWAs in RelayCore are not tokenized assets—they are **processes that agents settle** with provable outcomes.
+
+---
+
+## Complete Settlement Flow
 
 <Steps>
-  <Step title="Service Registration">
-    Provider registers service with SLA terms:
+  <Step title="1. Service Registration with SLA">
+    Provider registers an RWA service with explicit SLA terms:
+
     ```typescript
-    await rwaAgent.registerService({
-      name: 'shipping-verification',
-      serviceType: 'logistics',
-      pricePerCall: '5.00',
+    import { getRWASettlementAgent } from '@relaycore/sdk';
+
+    const rwaAgent = getRWASettlementAgent();
+
+    const serviceId = await rwaAgent.registerService({
+      name: 'KYC Verification Service',
+      serviceType: 'kyc_verification',
+      description: 'Identity verification with document attestation',
+      provider: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+      endpoint: 'https://api.kyc-service.com/verify',
+      pricePerCall: '5.00', // 5 USDC
       sla: {
-        maxLatencyMs: 3000,
-        requiredFields: ['tracking', 'signature', 'timestamp'],
-        proofFormat: 'signed'
-      }
+        maxLatencyMs: 30000, // 30 seconds max
+        requiredFields: ['documentHash', 'verificationStatus', 'timestamp'],
+        proofFormat: 'signed',
+        refundConditions: ['timeout', 'invalid_proof', 'missing_fields'],
+        validityPeriodSeconds: 300 // 5 minutes
+      },
+      verificationMethod: 'signature'
     });
     ```
+
+    **SLA Terms Breakdown**:
+    - `maxLatencyMs`: Maximum time from request to proof submission
+    - `requiredFields`: Fields that must be present in proof result
+    - `proofFormat`: `'json'` (basic), `'signed'` (EIP-191), or `'hashed'` (keccak256)
+    - `refundConditions`: Conditions that trigger automatic refund
+    - `validityPeriodSeconds`: How long proof remains valid
   </Step>
 
-  <Step title="Execution Request">
-    Agent requests execution with escrow lock:
+  <Step title="2. Agent Requests Execution">
+    Agent requests off-chain execution with escrow-backed payment:
+
     ```typescript
     const request = await rwaAgent.requestExecution(
       serviceId,
-      sessionId,
+      sessionId, // Escrow session with funds
       agentAddress,
-      { shipmentId: '12345' }
+      {
+        documentId: 'passport_12345',
+        userId: 'user_abc',
+        verificationType: 'identity'
+      }
     );
+
+    console.log('Request ID:', request.requestId);
+    console.log('Status:', request.status); // 'pending' or 'rejected'
     ```
+
+    **What Happens**:
+    1. System checks escrow session has sufficient funds
+    2. If funds available: creates execution request in `rwa_execution_requests` table
+    3. If insufficient: returns `rejected` status
+    4. Funds remain locked in escrow until settlement
   </Step>
 
-  <Step title="Off-Chain Execution">
-    Provider performs real-world service (shipping, verification, etc.)
-  </Step>
+  <Step title="3. Provider Executes Off-Chain">
+    Provider performs real-world service (KYC check, shipping verification, etc.):
 
-  <Step title="Proof Submission">
-    Provider submits cryptographic proof:
     ```typescript
-    await rwaAgent.submitProof({
-      serviceId,
-      requestId,
-      timestamp: Date.now(),
-      result: { tracking: 'DELIVERED', signature: '0x...' },
-      signature: '0x...',
-      providerAddress
-    });
+    // Provider's backend service
+    async function handleKYCRequest(requestId: string, input: any) {
+      // Perform actual KYC verification
+      const verification = await verifyIdentityDocument(input.documentId);
+      
+      // Generate proof
+      const proof = {
+        serviceId,
+        requestId,
+        timestamp: Date.now(),
+        result: {
+          documentHash: verification.hash,
+          verificationStatus: verification.status, // 'verified' | 'rejected'
+          timestamp: verification.completedAt,
+          confidence: verification.confidence
+        },
+        providerAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb'
+      };
+      
+      // Sign proof
+      proof.signature = await wallet.signMessage(JSON.stringify({
+        requestId: proof.requestId,
+        timestamp: proof.timestamp,
+        result: proof.result
+      }));
+      
+      return proof;
+    }
     ```
   </Step>
 
-  <Step title="SLA Verification">
-    System verifies proof against SLA terms:
-    - Latency within limits
-    - All required fields present
-    - Valid signature
-    - Within validity period
+  <Step title="4. Provider Submits Proof">
+    Provider submits cryptographic proof for verification:
+
+    ```typescript
+    const verification = await rwaAgent.submitProof({
+      serviceId,
+      requestId: request.requestId,
+      timestamp: Date.now(),
+      result: {
+        documentHash: '0xabc123...',
+        verificationStatus: 'verified',
+        timestamp: 1706000000,
+        confidence: 0.95
+      },
+      signature: '0x1a2b3c...',
+      providerAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb'
+    });
+
+    console.log('Proof valid:', verification.valid);
+    console.log('SLA metrics:', verification.slaMetrics);
+    ```
+
+    **Verification Response**:
+    ```json
+    {
+      "valid": true,
+      "slaMetrics": {
+        "latencyMs": 12500,
+        "fieldsPresent": ["documentHash", "verificationStatus", "timestamp"],
+        "fieldsMissing": [],
+        "proofFormatValid": true,
+        "withinValidity": true
+      }
+    }
+    ```
   </Step>
 
-  <Step title="Settlement">
-    If SLA met: release payment to provider
-    If SLA violated: refund to requester
+  <Step title="5. System Verifies SLA Compliance">
+    RelayCore automatically verifies proof against SLA terms:
+
+    ```typescript
+    // From: src/services/rwa/rwa-settlement-agent.ts
+    private verifySLA(proof: ExecutionProof, sla: SLATerms, requestedAt: string) {
+      const latencyMs = proof.timestamp - new Date(requestedAt).getTime();
+      
+      // Check latency
+      const latencyOk = latencyMs <= sla.maxLatencyMs;
+      
+      // Check required fields
+      const resultKeys = Object.keys(proof.result);
+      const fieldsMissing = sla.requiredFields.filter(f => !resultKeys.includes(f));
+      const fieldsOk = fieldsMissing.length === 0;
+      
+      // Check proof format
+      let proofFormatValid = false;
+      if (sla.proofFormat === 'signed') {
+        const message = JSON.stringify({
+          requestId: proof.requestId,
+          timestamp: proof.timestamp,
+          result: proof.result
+        });
+        const recoveredAddress = ethers.verifyMessage(message, proof.signature);
+        proofFormatValid = recoveredAddress.toLowerCase() === proof.providerAddress.toLowerCase();
+      }
+      
+      // Check validity period
+      const withinValidity = (Date.now() - proof.timestamp) < (sla.validityPeriodSeconds * 1000);
+      
+      return {
+        valid: latencyOk && fieldsOk && proofFormatValid && withinValidity,
+        slaMetrics: { latencyMs, fieldsPresent, fieldsMissing, proofFormatValid, withinValidity }
+      };
+    }
+    ```
+
+    **SLA Verification Checks**:
+    1. **Latency**: `latencyMs <= maxLatencyMs`
+    2. **Fields**: All `requiredFields` present in `proof.result`
+    3. **Signature**: EIP-191 signature verifies to `providerAddress`
+    4. **Validity**: Proof submitted within `validityPeriodSeconds`
+  </Step>
+
+  <Step title="6. Settlement">
+    System settles based on SLA verification:
+
+    ```typescript
+    const settlement = await rwaAgent.settle(request.requestId);
+
+    if (settlement.success) {
+      console.log('Payment released to provider');
+      console.log('Amount:', settlement.payment.amount);
+      console.log('TX Hash:', settlement.payment.txHash);
+    } else {
+      console.log('Payment refunded to requester');
+      console.log('Reason:', settlement.refund.reason);
+      console.log('Amount:', settlement.refund.amount);
+    }
+    ```
+
+    **If SLA Met** (proof valid):
+    ```typescript
+    // Release payment to provider
+    await escrow.releasePayment(
+      sessionId,
+      providerAddress,
+      pricePerCall,
+      requestId
+    );
+
+    // Update request status
+    await supabase
+      .from('rwa_execution_requests')
+      .update({ status: 'settled' })
+      .eq('request_id', requestId);
+    ```
+
+    **If SLA Violated** (proof invalid):
+    ```typescript
+    // Refund to session owner
+    await escrow.refund(sessionId);
+
+    // Update request status
+    await supabase
+      .from('rwa_execution_requests')
+      .update({ status: 'refunded' })
+      .eq('request_id', requestId);
+    ```
   </Step>
 </Steps>
 
-## SLA Terms
+---
+
+## RWA Service Types
+
+| Type | Description | Typical SLA |
+|------|-------------|-------------|
+| `compliance_check` | KYC/AML verification | 30s latency, signed proof |
+| `market_report` | Real-time market data | 10s latency, hashed proof |
+| `trade_confirmation` | Trade execution proof | 60s latency, signed proof |
+| `settlement_reconciliation` | Payment reconciliation | 120s latency, signed proof |
+| `price_verification` | Oracle price attestation | 5s latency, signed proof |
+| `kyc_verification` | Identity verification | 30s latency, signed proof |
+| `execution_proof` | Service execution proof | 60s latency, signed proof |
+| `data_attestation` | Data integrity proof | 15s latency, hashed proof |
+
+---
+
+## State Machine Integration
+
+RWA settlement can also use the state machine for complex multi-step processes:
 
 ```typescript
-interface SLATerms {
-  maxLatencyMs: number;
-  requiredFields: string[];
-  proofFormat: 'json' | 'signed' | 'hashed';
-  refundConditions: string[];
-  validityPeriodSeconds: number;
+import { rwaStateMachineService, RWAState, AgentRole } from '@relaycore/sdk';
+
+// 1. Create state machine
+const stateMachine = await rwaStateMachineService.createStateMachine(
+  'property_verification_123',
+  {
+    propertyId: 'prop_456',
+    address: '123 Main St',
+    owner: '0xOwner...'
+  }
+);
+
+// 2. Transition: created → verified
+const verifyResult = await rwaStateMachineService.transition({
+  rwaId: 'property_verification_123',
+  toState: RWAState.VERIFIED,
+  agentAddress: '0xVerifier...',
+  agentRole: AgentRole.VERIFIER,
+  sessionId: 1,
+  proof: {
+    documentHash: '0xabc...',
+    verificationStatus: 'verified'
+  }
+});
+
+// 3. Transition: verified → escrowed
+const escrowResult = await rwaStateMachineService.transition({
+  rwaId: 'property_verification_123',
+  toState: RWAState.ESCROWED,
+  agentAddress: '0xEscrowManager...',
+  agentRole: AgentRole.ESCROW_MANAGER,
+  sessionId: 1
+});
+
+// 4. Continue through states: in_process → fulfilled → settled
+```
+
+**State Machine States**:
+- `CREATED` → `VERIFIED` → `ESCROWED` → `IN_PROCESS` → `FULFILLED` → `SETTLED`
+- Each transition requires specific `AgentRole`
+- Each transition costs USDC (deducted from session)
+- Invalid transitions are rejected
+
+**Transition Costs**:
+```typescript
+const TRANSITION_COSTS = {
+  'created→verified': '0.10',
+  'verified→escrowed': '0.50',
+  'escrowed→in_process': '0.20',
+  'in_process→fulfilled': '0.30',
+  'fulfilled→settled': '1.00'
+};
+```
+
+---
+
+## Complete Example: KYC Verification
+
+```typescript
+// 1. Provider registers KYC service
+const serviceId = await rwaAgent.registerService({
+  name: 'KYC Pro',
+  serviceType: 'kyc_verification',
+  provider: '0xProvider...',
+  endpoint: 'https://api.kycpro.com/verify',
+  pricePerCall: '5.00',
+  sla: {
+    maxLatencyMs: 30000,
+    requiredFields: ['documentHash', 'verificationStatus', 'timestamp'],
+    proofFormat: 'signed',
+    refundConditions: ['timeout', 'invalid_proof'],
+    validityPeriodSeconds: 300
+  },
+  verificationMethod: 'signature'
+});
+
+// 2. Agent creates session with budget
+const session = await createSession({
+  maxSpend: '100.00',
+  duration: 86400
+});
+
+// 3. Agent requests KYC verification
+const request = await rwaAgent.requestExecution(
+  serviceId,
+  session.session_id,
+  '0xAgent...',
+  {
+    documentId: 'passport_12345',
+    userId: 'user_abc'
+  }
+);
+
+// 4. Provider executes KYC (off-chain)
+const kycResult = await performKYCVerification('passport_12345');
+
+// 5. Provider submits proof
+const proof = {
+  serviceId,
+  requestId: request.requestId,
+  timestamp: Date.now(),
+  result: {
+    documentHash: kycResult.hash,
+    verificationStatus: kycResult.status,
+    timestamp: kycResult.completedAt
+  },
+  signature: await wallet.signMessage(JSON.stringify({
+    requestId: request.requestId,
+    timestamp: Date.now(),
+    result: kycResult
+  })),
+  providerAddress: '0xProvider...'
+};
+
+const verification = await rwaAgent.submitProof(proof);
+
+// 6. System settles automatically
+const settlement = await rwaAgent.settle(request.requestId);
+
+if (settlement.success) {
+  console.log('KYC verified and provider paid');
+  console.log('Payment TX:', settlement.payment.txHash);
+} else {
+  console.log('KYC failed, requester refunded');
+  console.log('Reason:', settlement.refund.reason);
 }
 ```
 
-## Service Types
+---
 
-- `logistics` - Shipping and delivery verification
-- `compliance` - KYC and regulatory checks
-- `oracle` - Real-world data feeds
-- `audit` - Third-party audits
-- `verification` - Identity and document verification
+## SLA Violation Scenarios
+
+### Scenario 1: Latency Exceeded
+
+```typescript
+// SLA: maxLatencyMs = 30000 (30 seconds)
+// Actual: latencyMs = 45000 (45 seconds)
+
+const verification = await rwaAgent.submitProof(proof);
+// Returns: { valid: false, reason: "Latency 45000ms exceeds SLA 30000ms" }
+
+const settlement = await rwaAgent.settle(requestId);
+// Refunds to requester
+```
+
+### Scenario 2: Missing Required Fields
+
+```typescript
+// SLA: requiredFields = ['documentHash', 'verificationStatus', 'timestamp']
+// Proof: result = { documentHash: '0x...', verificationStatus: 'verified' }
+// Missing: 'timestamp'
+
+const verification = await rwaAgent.submitProof(proof);
+// Returns: { valid: false, reason: "Missing required fields: timestamp" }
+```
+
+### Scenario 3: Invalid Signature
+
+```typescript
+// Proof signature doesn't verify to providerAddress
+
+const verification = await rwaAgent.submitProof(proof);
+// Returns: { valid: false, reason: "Invalid proof format: expected signed" }
+```
+
+### Scenario 4: Proof Expired
+
+```typescript
+// SLA: validityPeriodSeconds = 300 (5 minutes)
+// Proof submitted 10 minutes after execution
+
+const verification = await rwaAgent.submitProof(proof);
+// Returns: { valid: false, reason: "Proof expired" }
+```
+
+---
+
+## Database Schema
+
+### `rwa_execution_requests`
+
+```sql
+CREATE TABLE rwa_execution_requests (
+  id SERIAL PRIMARY KEY,
+  request_id TEXT UNIQUE NOT NULL,
+  service_id TEXT NOT NULL,
+  session_id INTEGER NOT NULL,
+  agent_address TEXT NOT NULL,
+  input JSONB NOT NULL,
+  price TEXT NOT NULL,
+  sla_terms JSONB NOT NULL,
+  status TEXT NOT NULL, -- 'pending' | 'verified' | 'settled' | 'refunded' | 'failed'
+  proof JSONB,
+  verification JSONB,
+  requested_at TIMESTAMPTZ NOT NULL,
+  verified_at TIMESTAMPTZ,
+  settled_at TIMESTAMPTZ
+);
+```
+
+### `rwa_state_machines`
+
+```sql
+CREATE TABLE rwa_state_machines (
+  id SERIAL PRIMARY KEY,
+  rwa_id TEXT UNIQUE NOT NULL,
+  current_state TEXT NOT NULL,
+  previous_state TEXT,
+  metadata JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+```
+
+### `rwa_state_transitions`
+
+```sql
+CREATE TABLE rwa_state_transitions (
+  id SERIAL PRIMARY KEY,
+  rwa_id TEXT NOT NULL,
+  from_state TEXT NOT NULL,
+  to_state TEXT NOT NULL,
+  agent_address TEXT NOT NULL,
+  agent_role TEXT NOT NULL,
+  payment_hash TEXT NOT NULL,
+  proof JSONB NOT NULL,
+  transitioned_at TIMESTAMPTZ NOT NULL
+);
+```
+
+---
+
+## Best Practices
+
+### 1. Set Realistic SLA Terms
+
+```typescript
+// ❌ Bad: Unrealistic latency
+sla: {
+  maxLatencyMs: 1000, // 1 second for KYC is impossible
+  requiredFields: ['result']
+}
+
+// ✅ Good: Realistic latency with buffer
+sla: {
+  maxLatencyMs: 30000, // 30 seconds with 10s buffer
+  requiredFields: ['documentHash', 'verificationStatus', 'timestamp'],
+  validityPeriodSeconds: 300
+}
+```
+
+### 2. Always Sign Proofs
+
+```typescript
+// ❌ Bad: No proof
+await rwaAgent.submitProof({
+  serviceId,
+  requestId,
+  timestamp: Date.now(),
+  result: { data: 'result' },
+  providerAddress
+});
+
+// ✅ Good: Signed proof
+const message = JSON.stringify({ requestId, timestamp, result });
+const signature = await wallet.signMessage(message);
+
+await rwaAgent.submitProof({
+  serviceId,
+  requestId,
+  timestamp: Date.now(),
+  result,
+  signature,
+  providerAddress
+});
+```
+
+### 3. Handle Refunds Gracefully
+
+```typescript
+const settlement = await rwaAgent.settle(requestId);
+
+if (!settlement.success) {
+  logger.warn('RWA settlement failed', {
+    requestId,
+    reason: settlement.refund.reason
+  });
+  
+  // Notify user
+  await notifyUser({
+    type: 'rwa_refund',
+    requestId,
+    reason: settlement.refund.reason,
+    amount: settlement.refund.amount
+  });
+}
+```
+
+---
 
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="RWA SDK" icon="code" href="/sdk/rwa-sdk">
-    Build RWA services
+  <Card
+    title="RWA SDK"
+    icon="code"
+    href="/sdk/rwa-sdk"
+  >
+    Build RWA services with SDK
   </Card>
-  <Card title="State Machine" icon="diagram-project" href="/essentials/rwa-state-machine">
-    Learn about asset states
+  <Card
+    title="Session Management"
+    icon="wallet"
+    href="/essentials/sessions"
+  >
+    Use escrow sessions for RWA
+  </Card>
+  <Card
+    title="x402 Protocol"
+    icon="credit-card"
+    href="/essentials/x402-protocol"
+  >
+    Understanding payment flow
+  </Card>
+  <Card
+    title="State Machine"
+    icon="diagram-project"
+    href="/guides/rwa-state-machine"
+  >
+    Multi-step RWA processes
   </Card>
 </CardGroup>

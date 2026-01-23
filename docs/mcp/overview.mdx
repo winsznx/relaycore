@@ -1,13 +1,254 @@
 ---
 title: MCP Server Overview
-description: Model Context Protocol server with 60+ tools for AI agents
+description: Model Context Protocol server enabling AI agents to execute payments, discover services, and manage workflows
 ---
 
-## What is the MCP Server?
+## Why MCP for RelayCore?
 
-The Relay Core MCP server provides structured access to Cronos blockchain, Crypto.com Exchange API, and Relay Core payment infrastructure through 60+ tools.
+The Model Context Protocol (MCP) is an open standard that lets AI agents interact with external systems through **structured tools**. RelayCore's MCP server transforms complex blockchain and payment operations into simple, agent-friendly function calls.
 
-## Installation
+**Without MCP**: Agents would need to understand Cronos RPC, USDC contracts, EIP-3009 signatures, session management, and database queries.
+
+**With MCP**: Agents call `x402_pay` or `create_session` and RelayCore handles everything.
+
+### What Makes RelayCore's MCP Different
+
+1. **x402 Payment Integration**: Only MCP server with native HTTP 402 payment support
+2. **Gasless Execution**: Agents never pay gas fees
+3. **Session Budgets**: One payment, unlimited tool calls
+4. **Crypto.com Bridge**: Access to Crypto.com MCP tools via SSE
+5. **Cronos Native**: Direct blockchain integration, not just API wrappers
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     AI Agent (Claude)                        │
+└────────────────────────┬────────────────────────────────────┘
+                         │ MCP Protocol (stdio/HTTP)
+┌────────────────────────▼────────────────────────────────────┐
+│                  RelayCore MCP Server                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │ x402 Payment │  │ Cronos RPC   │  │ Crypto.com   │      │
+│  │ Tools (3)    │  │ Tools (10+)  │  │ Bridge (2)   │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │ Agent Mgmt   │  │ Service Disc │  │ Session/ACPS │      │
+│  │ Tools (7)    │  │ Tools (9)    │  │ Tools (7)    │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │ RWA State    │  │ Trading/Perp │  │ Analytics    │      │
+│  │ Tools (11)   │  │ Tools (9)    │  │ Tools (8)    │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+        ┌────────────────┼────────────────┐
+        │                │                │
+┌───────▼──────┐  ┌──────▼──────┐  ┌─────▼──────┐
+│ Facilitator  │  │ Cronos RPC  │  │ Supabase   │
+│ SDK          │  │ (Testnet)   │  │ Database   │
+└──────────────┘  └─────────────┘  └────────────┘
+```
+
+---
+
+## Tool Categories (63 Total)
+
+### x402 Payment Tools (3)
+
+Enable gasless payments via Crypto.com Facilitator SDK:
+
+| Tool | Purpose | Key Parameters |
+|------|---------|----------------|
+| `x402_wallet_status` | Check wallet balance and auto-pay config | None |
+| `x402_pay` | Execute USDC payment via Facilitator | `recipient`, `amountUsdc`, `resourceUrl` |
+| `x402_get_quote_with_payment` | Get quote with automatic payment | `pair`, `side`, `leverage`, `sizeUsd`, `autoPay` |
+
+**Example Flow**:
+```
+Agent: "Get a quote for BTC-USD long 10x with $1000"
+MCP: Calls x402_get_quote_with_payment
+  → Receives 402 from backend
+  → Generates EIP-3009 signature
+  → Settles via Facilitator
+  → Retries with payment ID
+  → Returns quote
+Agent: Receives quote data instantly
+```
+
+### Crypto.com MCP Bridge (2)
+
+Access Crypto.com's MCP server for market data:
+
+| Tool | Purpose |
+|------|---------|
+| `crypto_com_list_tools` | List available Crypto.com MCP tools |
+| `crypto_com_call_tool` | Call any Crypto.com tool dynamically |
+
+**Why This Matters**: RelayCore acts as a **bridge** between Claude and Crypto.com's MCP server, enabling agents to access real-time market data without separate configuration.
+
+### Cronos Blockchain Tools (10+)
+
+Direct RPC access to Cronos EVM:
+
+- `cronos_get_balance` - Get CRO balance
+- `cronos_get_transaction` - Transaction details by hash
+- `cronos_get_block` - Block data by number
+- `cronos_call_contract` - Call smart contract view functions
+- `cronos_get_logs` - Query event logs
+- `cronos_estimate_gas` - Estimate gas for transactions
+- Additional RPC methods...
+
+### Agent Discovery & Management (7)
+
+Register and discover AI agents:
+
+- `list_agents` - List all registered agents
+- `register_agent` - Register new agent with metadata
+- `get_agent` - Get agent details by ID
+- `update_agent` - Update agent metadata
+- `deactivate_agent` - Deactivate agent
+- `get_agent_reputation` - Get reputation score
+- `search_agents` - Search by criteria
+
+**Agent Registration Flow**:
+```typescript
+// Agent calls MCP tool
+register_agent({
+  name: "PerpAI Quote Agent",
+  category: "trading",
+  endpoint: "https://api.example.com",
+  capabilities: ["quote_aggregation", "dex_routing"]
+})
+
+// MCP server:
+// 1. Mints agent NFT on IdentityRegistry contract
+// 2. Stores metadata in Supabase
+// 3. Returns agent ID and transaction hash
+```
+
+### Service Discovery & Management (9)
+
+Register and monetize services:
+
+- `list_services` - List all services
+- `register_service` - Register with pricing
+- `get_service` - Get service details
+- `update_service` - Update metadata
+- `deactivate_service` - Deactivate service
+- `search_services` - Search by category/type
+- `get_service_reputation` - Get reputation score
+- `get_service_metrics` - Performance metrics
+- `invoke_service` - Call service endpoint
+
+**Service Monetization**:
+```
+1. Provider registers service with price (e.g., 0.01 USDC per call)
+2. Agent discovers service via search_services
+3. Agent calls invoke_service
+4. MCP handles x402 payment automatically
+5. Service executes and returns result
+6. Reputation updates based on outcome
+```
+
+### Session/Escrow Tools (ACPS - 7)
+
+Manage session budgets for gasless execution:
+
+- `create_session` - Create session with budget
+- `get_session` - Get session details
+- `list_sessions` - List user sessions
+- `activate_session` - Activate after deposit
+- `release_payment` - Release payment from session
+- `refund_session` - Refund remaining balance
+- `can_execute` - Check if execution is affordable
+
+**Session Workflow**:
+```
+1. create_session({ maxSpend: "100.00", duration: 86400 })
+   → Returns 402 for deposit
+2. Agent pays deposit via x402
+3. Session activates with $100 budget
+4. Agent makes 100 requests at $1 each
+   → Each request deducts from session.released
+   → No 402 responses, instant execution
+5. Session expires, remaining balance refunded
+```
+
+### RWA State Machine Tools (11)
+
+Manage real-world asset lifecycles:
+
+- `rwa_create` - Create RWA state machine
+- `rwa_get_state` - Get current state
+- `rwa_transition` - Transition state with payment
+- `rwa_list_assets` - List all assets
+- `rwa_verify_proof` - Verify execution proof
+- `rwa_get_history` - State transition history
+- `rwa_submit_proof` - Submit execution proof
+- `rwa_get_sla` - Get SLA terms
+- Additional state management tools...
+
+**RWA Flow Example**:
+```
+1. rwa_create({ rwaId: "property_123", metadata: {...} })
+   → State: "created"
+2. rwa_transition({ rwaId: "property_123", toState: "verified", ... })
+   → Receives 402, agent pays
+   → State: "verified"
+3. Service executes verification
+4. rwa_submit_proof({ rwaId: "property_123", proof: {...} })
+   → SLA verified, payment released
+   → State: "settled"
+```
+
+### Trading/PerpAI Tools (9)
+
+Multi-DEX quote aggregation and routing:
+
+- `get_price` - Pyth oracle price
+- `get_quote` - Aggregate quotes from 6 DEX venues
+- `execute_trade` - Route to best venue
+- `get_funding_rates` - Perpetual funding rates
+- `get_position_history` - Trading history
+- `get_venue_liquidity` - DEX liquidity data
+- Additional trading tools...
+
+**Quote Aggregation**:
+```
+get_quote({ pair: "BTC-USD", side: "long", leverage: 10, sizeUsd: 1000 })
+
+Returns:
+{
+  bestVenue: "VVS Finance",
+  entryPrice: 42500.50,
+  liquidationPrice: 38250.45,
+  fundingRate: 0.0001,
+  sources: [
+    { venue: "VVS Finance", price: 42500.50, liquidity: "high" },
+    { venue: "Moonlander", price: 42510.20, liquidity: "medium" },
+    { venue: "Delphi", price: 42505.00, liquidity: "low" }
+  ]
+}
+```
+
+### Analytics & Observability (8)
+
+System health and metrics:
+
+- `provider_stats` - Service provider metrics
+- `market_data` - DEX market data
+- `health_check` - System health status
+- `get_indexer_status` - Indexer sync status
+- `get_leaderboard` - Top agents/services by reputation
+- `get_payment_history` - Payment transaction history
+- Additional analytics tools...
+
+---
+
+## Installation & Setup
 
 <Steps>
   <Step title="Install Dependencies">
@@ -18,16 +259,22 @@ The Relay Core MCP server provides structured access to Cronos blockchain, Crypt
   </Step>
 
   <Step title="Configure Environment">
-    ```bash
-    cp .env.example .env
-    ```
+    Create `.env` file:
 
-    Edit `.env`:
     ```bash
+    # RelayCore API
     RELAY_CORE_API_URL=http://localhost:4000
-    RELAY_CORE_API_KEY=rc_xxxxx
-    WALLET_PRIVATE_KEY=your-key
-    ESCROW_CONTRACT_ADDRESS=0x9D340a67ddD4Fcf5eC590b7B67e1fE8d020F7D61
+
+    # Cronos Configuration
+    CRONOS_RPC_URL=https://evm-t3.cronos.org
+    WALLET_PRIVATE_KEY=0x...
+
+    # x402 Payment
+    USDC_TOKEN_ADDRESS=0xc01efAaF7C5C61bEbFAeb358E1161b537b8bC0e0
+    PAYMENT_RECIPIENT_ADDRESS=0x...
+
+    # Optional: Auto-pay for x402
+    X402_AUTO_PAY=true
     ```
   </Step>
 
@@ -38,94 +285,179 @@ The Relay Core MCP server provides structured access to Cronos blockchain, Crypt
   </Step>
 
   <Step title="Run">
+    **Stdio Mode** (for Claude Desktop):
     ```bash
     npm run dev
+    ```
+
+    **HTTP Mode** (for Claude Web):
+    ```bash
+    MCP_HTTP_MODE=true MCP_HTTP_PORT=3002 npm run dev
     ```
   </Step>
 </Steps>
 
+---
+
 ## Claude Desktop Integration
 
-Add to Claude Desktop configuration:
+Add to `claude_desktop_config.json`:
 
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
 {
   "mcpServers": {
     "relay-core": {
       "command": "node",
-      "args": ["/path/to/relaycore/mcp-server/dist/index.js"],
+      "args": ["/absolute/path/to/relaycore/mcp-server/dist/index.js"],
       "env": {
         "RELAY_CORE_API_URL": "http://localhost:4000",
-        "RELAY_CORE_API_KEY": "rc_xxxxx"
+        "CRONOS_RPC_URL": "https://evm-t3.cronos.org",
+        "WALLET_PRIVATE_KEY": "0x...",
+        "X402_AUTO_PAY": "true"
       }
     }
   }
 }
 ```
 
-## Tool Categories
+**Restart Claude Desktop** after configuration.
 
-<CardGroup cols={3}>
-  <Card title="x402 Payments" icon="credit-card">
-    3 tools for wallet status, payment settlement, and quote retrieval
-  </Card>
-  <Card title="Services" icon="server">
-    9 tools for service registration, discovery, and management
-  </Card>
-  <Card title="Reputation" icon="star">
-    6 tools for reputation scores, feedback, and trends
-  </Card>
-  <Card title="Agents" icon="robot">
-    7 tools for agent registration and activity tracking
-  </Card>
-  <Card title="ACPS" icon="wallet">
-    7 tools for session creation, payment release, and refunds
-  </Card>
-  <Card title="RWA" icon="building">
-    11 tools for asset state management and settlement
-  </Card>
-  <Card title="Trading" icon="chart-line">
-    9 tools for quotes, venues, and position tracking
-  </Card>
-  <Card title="Analytics" icon="chart-bar">
-    8 tools for metrics, health checks, and leaderboards
-  </Card>
-</CardGroup>
+---
 
-## Example Usage
+## Real Agent Flows
 
-<CodeGroup>
+### Flow 1: Discover and Hire an Agent
 
-```bash Market Data
-Get the current BTC price on Crypto.com
+```
+User: "Find a trading agent with reputation above 90"
 
-Claude: [Uses crypto_com_get_ticker tool]
-BTC/USDT: $97,234.50
-24h Volume: 1,234.56 BTC
+Claude uses MCP:
+1. search_agents({ category: "trading", minReputation: 90 })
+   → Returns: PerpAI Quote Agent (score: 95)
+
+2. get_agent({ agentId: "agent_123" })
+   → Returns: endpoint, pricing, capabilities
+
+3. create_session({ maxSpend: "50.00", duration: 3600 })
+   → Receives 402, pays deposit
+
+4. invoke_service({ serviceId: "agent_123", input: {...} })
+   → Deducts from session, executes instantly
+
+Result: Agent hired and executed within session budget
 ```
 
-```bash Service Discovery
-Find oracle services with reputation above 80
+### Flow 2: Execute RWA Settlement
 
-Claude: [Uses relay_discover_services tool]
-Found 3 oracle services:
-1. PerpAI Quote Agent - Score: 95
-2. Pyth Price Feed - Score: 88
-3. Chainlink Oracle - Score: 92
+```
+User: "Verify property asset property_123"
+
+Claude uses MCP:
+1. rwa_get_state({ rwaId: "property_123" })
+   → Current state: "pending"
+
+2. rwa_transition({ 
+     rwaId: "property_123", 
+     toState: "verified",
+     agentAddress: "0x...",
+     agentRole: "verifier"
+   })
+   → Receives 402, pays escrow
+
+3. [Off-chain: Verification service executes]
+
+4. rwa_submit_proof({ 
+     rwaId: "property_123", 
+     proof: { latency: 120, fields: {...} }
+   })
+   → SLA verified (latency < 300s)
+   → Payment released to verifier
+   → State: "settled"
+
+Result: RWA verified with provable SLA compliance
 ```
 
-```bash Agent Registration
-Register my agent as a data provider
+### Flow 3: Multi-DEX Quote Aggregation
 
-Claude: [Uses relay_register_agent tool]
-Agent registered on Cronos Testnet
-Agent ID: 2
-TX: 0x1234...
+```
+User: "Get the best price for BTC-USD long 10x with $1000"
+
+Claude uses MCP:
+1. x402_get_quote_with_payment({
+     pair: "BTC-USD",
+     side: "long",
+     leverage: 10,
+     sizeUsd: 1000,
+     autoPay: true
+   })
+   → Receives 402 from backend
+   → Auto-pays via Facilitator
+   → Retries with payment ID
+   → Returns aggregated quote
+
+Result: Best price from 6 DEX venues with automatic payment
 ```
 
-</CodeGroup>
+---
+
+## TaskArtifact Tracking
+
+Every MCP tool call creates a `TaskArtifact` for observability:
+
+```typescript
+// Before execution
+const task = await createTaskArtifact({
+  tool_name: "x402_pay",
+  inputs: { recipient, amountUsdc, resourceUrl }
+});
+
+// After success
+await settleTaskArtifact(task.task_id, { result: txHash });
+
+// After failure
+await failTaskArtifact(task.task_id, { 
+  code: "INSUFFICIENT_BALANCE", 
+  message: "Not enough USDC" 
+});
+```
+
+**Benefits**:
+- Full audit trail of agent actions
+- Debugging failed executions
+- Performance metrics
+- Reputation scoring inputs
+
+---
+
+## Security Model
+
+### Authentication
+
+MCP tools use **wallet-based authentication**:
+- Server wallet signs transactions
+- Agent wallet pays for services
+- No API keys required for basic operations
+
+### Payment Enforcement
+
+All paid operations use **x402 protocol**:
+- EIP-3009 signature verification
+- Nonce tracking prevents replay
+- Time-bound authorizations
+- Amount enforcement
+
+### Rate Limiting
+
+Tools are rate-limited by:
+- Session budget (financial limit)
+- Reputation score (trust limit)
+- Network capacity (technical limit)
+
+---
 
 ## Next Steps
 
@@ -135,13 +467,27 @@ TX: 0x1234...
     icon="book"
     href="/mcp/tools-reference"
   >
-    Explore all 60+ tools
+    Complete tool catalog with schemas
   </Card>
   <Card
     title="Authentication"
     icon="key"
     href="/mcp/authentication"
   >
-    Learn about API key authentication
+    Wallet and API key setup
+  </Card>
+  <Card
+    title="x402 Protocol"
+    icon="credit-card"
+    href="/essentials/x402-protocol"
+  >
+    Understanding gasless payments
+  </Card>
+  <Card
+    title="SDK Integration"
+    icon="code"
+    href="/sdk/agent-sdk"
+  >
+    Build agents with RelayCore SDK
   </Card>
 </CardGroup>
