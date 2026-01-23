@@ -1,0 +1,589 @@
+---
+title: Playground Execution Reality
+description: Understanding mock vs real execution modes in the RelayCore Playground
+---
+
+## Overview
+
+The RelayCore Playground is a **visual workflow builder** using React Flow that lets you design and execute agent workflows. It has two execution modes:
+
+1. **Mock Mode**: Simulates execution with fake data (for testing UI/UX)
+2. **Real Mode**: Executes actual blockchain transactions and x402 payments
+
+**Critical for Judges**: The Playground demonstrates **real x402 payment flows** and **live blockchain integration** when in Real Mode.
+
+---
+
+## Execution Modes
+
+### Mock Mode
+
+**Purpose**: Test workflow logic without spending real USDC or gas.
+
+**What's Mocked**:
+- x402 payments (simulated with fake transaction hashes)
+- Blockchain calls (returns fake balances and data)
+- Service execution (returns predefined responses)
+- Agent discovery (returns mock agent list)
+
+**What's Real**:
+- UI rendering and node connections
+- Workflow validation logic
+- Error handling paths
+- State management
+
+**Example Mock Output**:
+```json
+{
+  "mode": "mock",
+  "payment": {
+    "txHash": "0xmock1234567890abcdef",
+    "amount": "10000",
+    "status": "simulated"
+  },
+  "result": {
+    "quote": {
+      "entryPrice": 42500.50,
+      "liquidationPrice": 38250.45
+    }
+  }
+}
+```
+
+### Real Mode
+
+**Purpose**: Execute actual workflows with real payments and blockchain transactions.
+
+**What's Real**:
+- x402 payments via Crypto.com Facilitator SDK
+- USDC transfers on Cronos Testnet
+- Blockchain RPC calls to Cronos
+- Service API calls with real responses
+- Session budget deductions
+- Reputation updates
+
+**What Happens**:
+1. User connects wallet (MetaMask, WalletConnect)
+2. Workflow executes node by node
+3. x402 payments settle on-chain
+4. Results stream back in real-time
+5. Transaction hashes link to Cronos Explorer
+
+**Example Real Output**:
+```json
+{
+  "mode": "real",
+  "payment": {
+    "txHash": "0x1a2b3c4d5e6f7890abcdef1234567890abcdef12",
+    "amount": "10000",
+    "status": "settled",
+    "explorer": "https://explorer.cronos.org/testnet/tx/0x1a2b..."
+  },
+  "result": {
+    "quote": {
+      "entryPrice": 42487.32,
+      "liquidationPrice": 38238.59,
+      "sources": [
+        { "venue": "VVS Finance", "price": 42487.32 },
+        { "venue": "Moonlander", "price": 42495.10 }
+      ]
+    }
+  }
+}
+```
+
+---
+
+## How to Switch Modes
+
+### In the UI
+
+```typescript
+// Playground component
+const [executionMode, setExecutionMode] = useState<'mock' | 'real'>('mock');
+
+<Toggle
+  value={executionMode}
+  onChange={(mode) => setExecutionMode(mode)}
+  options={[
+    { value: 'mock', label: 'Mock Mode (Free)' },
+    { value: 'real', label: 'Real Mode (Costs USDC)' }
+  ]}
+/>
+```
+
+### In the Code
+
+```typescript
+// src/pages/Playground/ExecutionEngine.ts
+export class ExecutionEngine {
+  constructor(private mode: 'mock' | 'real') {}
+  
+  async executeNode(node: Node) {
+    if (this.mode === 'mock') {
+      return this.mockExecutor.execute(node);
+    } else {
+      return this.realExecutor.execute(node);
+    }
+  }
+}
+```
+
+---
+
+## Node Execution Comparison
+
+### Payment Node
+
+**Mock Mode**:
+```typescript
+// MockExecutionEngine.ts
+async executePaymentNode(node: PaymentNode) {
+  await delay(1000); // Simulate network latency
+  
+  return {
+    success: true,
+    txHash: `0xmock${Date.now()}`,
+    amount: node.data.amount,
+    status: 'simulated'
+  };
+}
+```
+
+**Real Mode**:
+```typescript
+// RealExecutionEngine.ts
+async executePaymentNode(node: PaymentNode) {
+  const facilitator = new Facilitator({ network: CronosNetwork.CronosTestnet });
+  
+  // Generate payment header
+  const paymentHeader = await facilitator.generatePaymentHeader({
+    to: node.data.recipient,
+    value: node.data.amount,
+    asset: USDC_ADDRESS,
+    signer: wallet
+  });
+  
+  // Settle via backend
+  const response = await fetch('/api/pay', {
+    method: 'POST',
+    body: JSON.stringify({ paymentHeader, paymentRequirements })
+  });
+  
+  const result = await response.json();
+  
+  return {
+    success: result.success,
+    txHash: result.txHash,
+    amount: node.data.amount,
+    status: 'settled',
+    explorer: `https://explorer.cronos.org/testnet/tx/${result.txHash}`
+  };
+}
+```
+
+### Service Discovery Node
+
+**Mock Mode**:
+```typescript
+async executeDiscoveryNode(node: DiscoveryNode) {
+  return {
+    services: [
+      { id: 'mock_1', name: 'Mock Oracle', reputation: 95 },
+      { id: 'mock_2', name: 'Mock DEX', reputation: 88 }
+    ]
+  };
+}
+```
+
+**Real Mode**:
+```typescript
+async executeDiscoveryNode(node: DiscoveryNode) {
+  const response = await fetch('/api/services/search', {
+    method: 'POST',
+    body: JSON.stringify({
+      category: node.data.category,
+      minReputation: node.data.minReputation
+    })
+  });
+  
+  const services = await response.json();
+  
+  return {
+    services: services.map(s => ({
+      id: s.id,
+      name: s.name,
+      reputation: s.reputation_score,
+      endpoint: s.endpoint,
+      price: s.price
+    }))
+  };
+}
+```
+
+### Quote Aggregation Node
+
+**Mock Mode**:
+```typescript
+async executeQuoteNode(node: QuoteNode) {
+  return {
+    entryPrice: 42500 + Math.random() * 100,
+    liquidationPrice: 38250 + Math.random() * 50,
+    fundingRate: 0.0001,
+    bestVenue: 'Mock DEX'
+  };
+}
+```
+
+**Real Mode**:
+```typescript
+async executeQuoteNode(node: QuoteNode) {
+  // Real x402 flow
+  const response = await fetch('/api/perpai/quote', {
+    method: 'POST',
+    headers: { 'X-Session-Id': sessionId },
+    body: JSON.stringify({
+      pair: node.data.pair,
+      side: node.data.side,
+      leverage: node.data.leverage,
+      sizeUsd: node.data.sizeUsd
+    })
+  });
+  
+  if (response.status === 402) {
+    // Handle x402 payment
+    const { paymentRequirements } = await response.json();
+    await this.handleX402Payment(paymentRequirements);
+    // Retry with payment ID...
+  }
+  
+  const quote = await response.json();
+  return quote;
+}
+```
+
+---
+
+## Proof of Real Execution
+
+### Track 1: x402 Payment Applications
+
+**What Judges See in Real Mode**:
+
+1. **Payment Challenge**:
+   ```json
+   {
+     "status": 402,
+     "paymentRequirements": {
+       "payTo": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+       "maxAmountRequired": "10000",
+       "network": "cronos-testnet"
+     }
+   }
+   ```
+
+2. **EIP-3009 Signature**:
+   ```
+   Signing authorization...
+   Signature: 0x1a2b3c...
+   ```
+
+3. **Facilitator Settlement**:
+   ```
+   Settling via Facilitator SDK...
+   TX Hash: 0x1a2b3c4d5e6f7890abcdef1234567890abcdef12
+   ```
+
+4. **On-Chain Verification**:
+   ```
+   View on Explorer:
+   https://explorer.cronos.org/testnet/tx/0x1a2b3c4d5e6f7890abcdef1234567890abcdef12
+   
+   From: 0xUserWallet
+   To: 0xMerchant
+   Value: 0.01 USDC
+   Method: transferWithAuthorization
+   ```
+
+### Track 4: Developer Tooling
+
+**What Judges See**:
+
+1. **Visual Workflow Builder**:
+   - Drag-and-drop nodes
+   - Connect nodes with edges
+   - Configure node parameters
+   - Real-time validation
+
+2. **Execution Visualization**:
+   - Node-by-node execution
+   - Real-time status updates
+   - Payment confirmations
+   - Error handling
+
+3. **SDK Integration**:
+   ```typescript
+   // Playground uses RelayAgent SDK internally
+   const agent = new RelayAgent({ wallet, apiKey });
+   const services = await agent.discoverServices(criteria);
+   const result = await agent.execute(serviceId, input);
+   ```
+
+4. **MCP Tool Execution**:
+   ```typescript
+   // Playground can call MCP tools
+   const mcpResult = await callMCPTool('x402_pay', {
+     recipient: merchantAddress,
+     amountUsdc: 0.01
+   });
+   ```
+
+---
+
+## Session Integration
+
+### Creating a Session in Playground
+
+```typescript
+// Real Mode with Session
+const session = await createSession({
+  maxSpend: '100.00',
+  duration: 3600
+});
+
+// Pay session deposit via x402
+await handleX402Payment(session.paymentRequirements);
+
+// Execute workflow with session budget
+const workflow = await executeWorkflow(nodes, {
+  sessionId: session.session_id,
+  mode: 'real'
+});
+
+// Each node deducts from session.released
+// No 402 responses, instant execution
+```
+
+**Session Budget Tracking**:
+```
+Initial Budget: $100.00
+After Node 1 (Quote): $99.99 (-$0.01)
+After Node 2 (Trade): $99.89 (-$0.10)
+After Node 3 (Oracle): $99.88 (-$0.01)
+Remaining: $99.88
+```
+
+---
+
+## Error Handling
+
+### Mock Mode Errors
+
+```typescript
+// Simulated errors for testing
+if (node.data.shouldFail) {
+  return {
+    success: false,
+    error: {
+      code: 'MOCK_ERROR',
+      message: 'Simulated failure for testing',
+      retryable: true
+    }
+  };
+}
+```
+
+### Real Mode Errors
+
+```typescript
+// Real errors from blockchain/services
+try {
+  const result = await executeRealNode(node);
+  return result;
+} catch (error) {
+  if (error.code === 'INSUFFICIENT_BALANCE') {
+    return {
+      success: false,
+      error: {
+        code: 'INSUFFICIENT_BALANCE',
+        message: 'Not enough USDC in wallet',
+        retryable: false,
+        details: { required: '10000', available: '5000' }
+      }
+    };
+  }
+  
+  if (error.code === 'NETWORK_ERROR') {
+    return {
+      success: false,
+      error: {
+        code: 'NETWORK_ERROR',
+        message: 'Cronos RPC timeout',
+        retryable: true,
+        retryAfterMs: 5000
+      }
+    };
+  }
+  
+  throw error;
+}
+```
+
+---
+
+## Implementation Files
+
+### Execution Engines
+
+**Mock Executor**: `src/pages/Playground/MockExecutionEngine.ts`
+```typescript
+export class MockExecutionEngine {
+  async execute(node: Node): Promise<ExecutionResult> {
+    // Simulate execution with delays
+    await delay(Math.random() * 2000);
+    
+    // Return mock data based on node type
+    switch (node.type) {
+      case 'payment':
+        return this.mockPayment(node);
+      case 'discovery':
+        return this.mockDiscovery(node);
+      case 'quote':
+        return this.mockQuote(node);
+      default:
+        return { success: true, data: {} };
+    }
+  }
+}
+```
+
+**Real Executor**: `src/pages/Playground/RealExecutionEngine.ts`
+```typescript
+export class RealExecutionEngine {
+  constructor(
+    private wallet: ethers.Signer,
+    private apiUrl: string
+  ) {}
+  
+  async execute(node: Node): Promise<ExecutionResult> {
+    // Real execution with actual API calls
+    switch (node.type) {
+      case 'payment':
+        return this.realPayment(node);
+      case 'discovery':
+        return this.realDiscovery(node);
+      case 'quote':
+        return this.realQuote(node);
+      default:
+        throw new Error(`Unknown node type: ${node.type}`);
+    }
+  }
+  
+  private async realPayment(node: PaymentNode) {
+    const facilitator = new Facilitator({ 
+      network: CronosNetwork.CronosTestnet 
+    });
+    
+    const paymentHeader = await facilitator.generatePaymentHeader({
+      to: node.data.recipient,
+      value: node.data.amount,
+      asset: USDC_ADDRESS,
+      signer: this.wallet
+    });
+    
+    const response = await fetch(`${this.apiUrl}/api/pay`, {
+      method: 'POST',
+      body: JSON.stringify({ paymentHeader, ... })
+    });
+    
+    return await response.json();
+  }
+}
+```
+
+---
+
+## Testing the Playground
+
+### Mock Mode Test
+
+1. Open Playground
+2. Select "Mock Mode"
+3. Add nodes: Discovery → Quote → Payment
+4. Click "Execute Workflow"
+5. See simulated results instantly
+6. No wallet connection required
+7. No USDC spent
+
+### Real Mode Test
+
+1. Open Playground
+2. Connect wallet (MetaMask)
+3. Ensure wallet has USDC on Cronos Testnet
+4. Select "Real Mode"
+5. Add nodes: Discovery → Quote → Payment
+6. Click "Execute Workflow"
+7. Approve wallet signatures
+8. See real transaction hashes
+9. Verify on Cronos Explorer
+10. Check USDC balance decreased
+
+---
+
+## Judge Demonstration Script
+
+**Goal**: Prove x402 works end-to-end with real blockchain transactions.
+
+**Steps**:
+1. Show wallet balance: 10 USDC
+2. Execute workflow in Real Mode
+3. Show 402 response in network tab
+4. Show EIP-3009 signature generation
+5. Show Facilitator settlement
+6. Show transaction hash
+7. Open Cronos Explorer
+8. Verify USDC transfer on-chain
+9. Show wallet balance: 9.99 USDC
+10. Show payment recorded in database
+
+**Evidence**:
+- Network requests (402 → payment → retry)
+- Transaction hashes (clickable links)
+- Explorer screenshots
+- Database records
+- Wallet balance changes
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="x402 Protocol"
+    icon="credit-card"
+    href="/essentials/x402-protocol"
+  >
+    Deep dive into payment flow
+  </Card>
+  <Card
+    title="SDK Integration"
+    icon="code"
+    href="/sdk/agent-sdk"
+  >
+    Build agents programmatically
+  </Card>
+  <Card
+    title="MCP Tools"
+    icon="robot"
+    href="/mcp/overview"
+  >
+    Use MCP for agent execution
+  </Card>
+  <Card
+    title="First Payment Guide"
+    icon="rocket"
+    href="/guides/first-payment"
+  >
+    Complete tutorial
+  </Card>
+</CardGroup>

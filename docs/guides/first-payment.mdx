@@ -1,64 +1,459 @@
 ---
-title: Your First x402 Payment
-description: Execute your first x402 payment in 5 minutes
+title: First Payment Tutorial
+description: Complete guide to executing your first x402 payment on RelayCore
+---
+
+## Overview
+
+This tutorial walks you through executing your first x402 payment from start to finish. You'll learn how to:
+- Set up your wallet with USDC on Cronos Testnet
+- Make a payment-protected API request
+- Handle the 402 response
+- Generate and submit payment
+- Retry with entitlement
+
+**Time to complete**: 10 minutes
+
 ---
 
 ## Prerequisites
 
-<Check>Cronos Testnet wallet connected</Check>
-<Check>USDC balance (get from faucet)</Check>
-<Check>Relay Core running locally</Check>
+<AccordionGroup>
+  <Accordion title="1. Wallet Setup">
+    Install MetaMask or any Web3 wallet:
+    - [MetaMask](https://metamask.io/)
+    - [WalletConnect](https://walletconnect.com/)
+  </Accordion>
 
-## Steps
+  <Accordion title="2. Add Cronos Testnet">
+    Add Cronos Testnet to your wallet:
 
-<Steps>
-  <Step title="Navigate to Trade Page">
-    Go to http://localhost:5173/dashboard/trade
-  </Step>
+    | Field | Value |
+    |-------|-------|
+    | Network Name | Cronos Testnet |
+    | RPC URL | `https://evm-t3.cronos.org` |
+    | Chain ID | `338` |
+    | Currency Symbol | `TCRO` |
+    | Block Explorer | `https://explorer.cronos.org/testnet` |
+  </Accordion>
 
-  <Step title="Select Direct Payment">
-    Choose "Direct Payment" option (not session)
-  </Step>
+  <Accordion title="3. Get Testnet CRO">
+    Get free testnet CRO from faucet:
+    - Visit [Cronos Faucet](https://cronos.org/faucet)
+    - Enter your wallet address
+    - Receive 10 TCRO for gas fees
+  </Accordion>
 
-  <Step title="Click Get Quote">
-    Click the "Get Quote" button
-  </Step>
+  <Accordion title="4. Get Testnet USDC">
+    Get testnet USDC:
+    ```bash
+    # USDC Contract: 0xc01efAaF7C5C61bEbFAeb358E1161b537b8bC0e0
+    # Contact RelayCore team for testnet USDC
+    # Or use the faucet endpoint
+    curl -X POST https://api.relaycore.xyz/faucet \
+      -H "Content-Type: application/json" \
+      -d '{"address": "YOUR_WALLET_ADDRESS"}'
+    ```
+  </Accordion>
+</AccordionGroup>
 
-  <Step title="Sign Authorization">
-    Your wallet will prompt you to sign an EIP-3009 authorization.
-    This does NOT execute a transaction, just creates a signature.
-  </Step>
+---
 
-  <Step title="Payment Settles">
-    The Facilitator SDK verifies your signature and settles the USDC transfer on-chain.
-    You'll see a transaction hash in the response.
-  </Step>
+## Step-by-Step Tutorial
 
-  <Step title="View Quote">
-    Quote data returns with entry price, liquidation price, and funding rates.
-  </Step>
-</Steps>
+### Step 1: Install Dependencies
 
-<Check>Payment complete! You've executed your first x402 transaction.</Check>
+```bash
+npm install ethers @crypto.com/facilitator-client
+```
 
-## What Happened?
+### Step 2: Initialize Wallet and Facilitator
 
-1. Frontend called `POST /api/perpai/quote`
-2. Server returned `402 Payment Required` with payment details
-3. You signed EIP-3009 authorization (no gas fee)
-4. Frontend submitted to `POST /api/pay`
-5. Facilitator SDK verified signature and settled USDC transfer
-6. Payment recorded in database
-7. Frontend retried quote request with payment ID
-8. Server returned quote data
+```typescript
+import { ethers } from 'ethers';
+import { Facilitator, CronosNetwork } from '@crypto.com/facilitator-client';
+
+// Connect to Cronos Testnet
+const provider = new ethers.JsonRpcProvider('https://evm-t3.cronos.org');
+
+// Initialize wallet (use your private key)
+const wallet = new ethers.Wallet(process.env.WALLET_PRIVATE_KEY, provider);
+
+// Initialize Facilitator
+const facilitator = new Facilitator({ 
+  network: CronosNetwork.CronosTestnet 
+});
+
+console.log('Wallet address:', wallet.address);
+```
+
+### Step 3: Check USDC Balance
+
+```typescript
+const USDC_ADDRESS = '0xc01efAaF7C5C61bEbFAeb358E1161b537b8bC0e0';
+
+const ERC20_ABI = [
+  "function balanceOf(address owner) view returns (uint256)",
+  "function decimals() view returns (uint8)"
+];
+
+const usdc = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, provider);
+
+const balance = await usdc.balanceOf(wallet.address);
+const decimals = await usdc.decimals();
+
+console.log('USDC Balance:', ethers.formatUnits(balance, decimals), 'USDC');
+```
+
+### Step 4: Make Protected API Request
+
+```typescript
+const API_URL = 'https://api.relaycore.xyz';
+
+// Request a protected resource (will return 402)
+const response = await fetch(`${API_URL}/api/perpai/quote`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    pair: 'BTC-USD',
+    side: 'long',
+    leverage: 10,
+    sizeUsd: 1000
+  })
+});
+
+console.log('Status:', response.status); // 402 Payment Required
+```
+
+### Step 5: Handle 402 Response
+
+```typescript
+if (response.status === 402) {
+  const paymentChallenge = await response.json();
+  
+  console.log('Payment Required:');
+  console.log('Payment ID:', paymentChallenge.paymentId);
+  console.log('Amount:', paymentChallenge.paymentRequirements.maxAmountRequired, 'base units');
+  console.log('Recipient:', paymentChallenge.paymentRequirements.payTo);
+  console.log('Resource:', paymentChallenge.paymentRequirements.resource);
+  
+  /*
+  Response:
+  {
+    "error": "Payment Required",
+    "paymentId": "pay_1706000000_abc123",
+    "paymentRequirements": {
+      "scheme": "exact",
+      "network": "cronos-testnet",
+      "payTo": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+      "asset": "0xc01efAaF7C5C61bEbFAeb358E1161b537b8bC0e0",
+      "maxAmountRequired": "10000",
+      "maxTimeoutSeconds": 300,
+      "resource": "/api/perpai/quote",
+      "description": "PerpAI quote aggregation"
+    },
+    "message": "Payment of 10000 base units required",
+    "network": "cronos-testnet"
+  }
+  */
+}
+```
+
+### Step 6: Generate Payment Header
+
+```typescript
+const { paymentId, paymentRequirements } = paymentChallenge;
+
+// Generate EIP-3009 authorization
+const paymentHeader = await facilitator.generatePaymentHeader({
+  to: paymentRequirements.payTo,
+  value: paymentRequirements.maxAmountRequired,
+  asset: paymentRequirements.asset,
+  signer: wallet,
+  validAfter: Math.floor(Date.now() / 1000) - 60,
+  validBefore: Math.floor(Date.now() / 1000) + 300
+});
+
+console.log('Payment header generated');
+console.log('Header length:', paymentHeader.length, 'bytes');
+```
+
+### Step 7: Submit Payment for Settlement
+
+```typescript
+const settlementResponse = await fetch(`${API_URL}/api/pay`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    paymentId,
+    paymentHeader,
+    paymentRequirements
+  })
+});
+
+const settlementResult = await settlementResponse.json();
+
+if (settlementResult.success) {
+  console.log('Payment settled successfully!');
+  console.log('Transaction Hash:', settlementResult.txHash);
+  console.log('Explorer:', `https://explorer.cronos.org/testnet/tx/${settlementResult.txHash}`);
+  
+  /*
+  Response:
+  {
+    "success": true,
+    "paymentId": "pay_1706000000_abc123",
+    "txHash": "0x1a2b3c4d5e6f7890abcdef1234567890abcdef12",
+    "timestamp": 1706000000000
+  }
+  */
+} else {
+  console.error('Payment failed:', settlementResult.error);
+}
+```
+
+### Step 8: Retry Request with Payment ID
+
+```typescript
+// Retry the original request with payment ID
+const retryResponse = await fetch(`${API_URL}/api/perpai/quote`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-Payment-Id': paymentId
+  },
+  body: JSON.stringify({
+    pair: 'BTC-USD',
+    side: 'long',
+    leverage: 10,
+    sizeUsd: 1000
+  })
+});
+
+if (retryResponse.ok) {
+  const quote = await retryResponse.json();
+  
+  console.log('Quote received:');
+  console.log('Entry Price:', quote.entryPrice);
+  console.log('Liquidation Price:', quote.liquidationPrice);
+  console.log('Funding Rate:', quote.fundingRate);
+  console.log('Best Venue:', quote.bestVenue);
+  
+  /*
+  Response:
+  {
+    "pair": "BTC-USD",
+    "entryPrice": 42487.32,
+    "liquidationPrice": 38238.59,
+    "fundingRate": 0.0001,
+    "bestVenue": "VVS Finance",
+    "sources": [
+      { "venue": "VVS Finance", "price": 42487.32, "liquidity": "high" },
+      { "venue": "Moonlander", "price": 42495.10, "liquidity": "medium" }
+    ]
+  }
+  */
+}
+```
+
+### Step 9: Verify On-Chain
+
+```typescript
+// Check transaction on Cronos Explorer
+const explorerUrl = `https://explorer.cronos.org/testnet/tx/${settlementResult.txHash}`;
+console.log('View transaction:', explorerUrl);
+
+// Verify USDC balance decreased
+const newBalance = await usdc.balanceOf(wallet.address);
+const spent = balance - newBalance;
+
+console.log('USDC spent:', ethers.formatUnits(spent, decimals), 'USDC');
+console.log('New balance:', ethers.formatUnits(newBalance, decimals), 'USDC');
+```
+
+---
+
+## Complete Code Example
+
+```typescript
+import { ethers } from 'ethers';
+import { Facilitator, CronosNetwork } from '@crypto.com/facilitator-client';
+
+async function firstPayment() {
+  // 1. Setup
+  const provider = new ethers.JsonRpcProvider('https://evm-t3.cronos.org');
+  const wallet = new ethers.Wallet(process.env.WALLET_PRIVATE_KEY, provider);
+  const facilitator = new Facilitator({ network: CronosNetwork.CronosTestnet });
+  
+  const API_URL = 'https://api.relaycore.xyz';
+  const USDC_ADDRESS = '0xc01efAaF7C5C61bEbFAeb358E1161b537b8bC0e0';
+  
+  console.log('Wallet:', wallet.address);
+  
+  // 2. Check balance
+  const usdc = new ethers.Contract(
+    USDC_ADDRESS,
+    ['function balanceOf(address) view returns (uint256)'],
+    provider
+  );
+  const balance = await usdc.balanceOf(wallet.address);
+  console.log('USDC Balance:', ethers.formatUnits(balance, 6), 'USDC');
+  
+  // 3. Request protected resource
+  const response = await fetch(`${API_URL}/api/perpai/quote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      pair: 'BTC-USD',
+      side: 'long',
+      leverage: 10,
+      sizeUsd: 1000
+    })
+  });
+  
+  if (response.status !== 402) {
+    throw new Error('Expected 402 Payment Required');
+  }
+  
+  // 4. Handle 402
+  const { paymentId, paymentRequirements } = await response.json();
+  console.log('Payment required:', paymentRequirements.maxAmountRequired, 'base units');
+  
+  // 5. Generate payment header
+  const paymentHeader = await facilitator.generatePaymentHeader({
+    to: paymentRequirements.payTo,
+    value: paymentRequirements.maxAmountRequired,
+    asset: paymentRequirements.asset,
+    signer: wallet,
+    validAfter: Math.floor(Date.now() / 1000) - 60,
+    validBefore: Math.floor(Date.now() / 1000) + 300
+  });
+  
+  // 6. Submit payment
+  const settlementResponse = await fetch(`${API_URL}/api/pay`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paymentId, paymentHeader, paymentRequirements })
+  });
+  
+  const settlement = await settlementResponse.json();
+  if (!settlement.success) {
+    throw new Error(`Payment failed: ${settlement.error}`);
+  }
+  
+  console.log('Payment settled:', settlement.txHash);
+  
+  // 7. Retry with payment ID
+  const retryResponse = await fetch(`${API_URL}/api/perpai/quote`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Payment-Id': paymentId
+    },
+    body: JSON.stringify({
+      pair: 'BTC-USD',
+      side: 'long',
+      leverage: 10,
+      sizeUsd: 1000
+    })
+  });
+  
+  const quote = await retryResponse.json();
+  console.log('Quote:', quote);
+  
+  // 8. Verify balance
+  const newBalance = await usdc.balanceOf(wallet.address);
+  const spent = balance - newBalance;
+  console.log('Spent:', ethers.formatUnits(spent, 6), 'USDC');
+  
+  return quote;
+}
+
+// Run
+firstPayment()
+  .then(quote => console.log('Success!', quote))
+  .catch(error => console.error('Error:', error));
+```
+
+---
+
+## Common Issues
+
+### Issue 1: Insufficient USDC Balance
+
+**Error**: `Insufficient USDC balance`
+
+**Solution**:
+```bash
+# Get testnet USDC from faucet
+curl -X POST https://api.relaycore.xyz/faucet \
+  -H "Content-Type: application/json" \
+  -d '{"address": "YOUR_WALLET_ADDRESS"}'
+```
+
+### Issue 2: Invalid Signature
+
+**Error**: `Payment verification failed: Invalid signature`
+
+**Solution**:
+- Ensure you're using the correct wallet
+- Check that `signer` parameter matches wallet
+- Verify network is Cronos Testnet (338)
+
+### Issue 3: Nonce Already Used
+
+**Error**: `Nonce already used`
+
+**Solution**:
+- Generate a fresh payment header
+- Don't reuse payment headers
+- Each payment needs a unique nonce
+
+### Issue 4: Authorization Expired
+
+**Error**: `Authorization expired`
+
+**Solution**:
+```typescript
+// Increase validity window
+const paymentHeader = await facilitator.generatePaymentHeader({
+  // ...
+  validAfter: Math.floor(Date.now() / 1000) - 60,
+  validBefore: Math.floor(Date.now() / 1000) + 600 // 10 minutes
+});
+```
+
+---
 
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Create Session" icon="wallet" href="/guides/create-session">
-    Set up gasless payments
+  <Card
+    title="Session Escrow"
+    icon="wallet"
+    href="/guides/create-session"
+  >
+    Create session for multiple payments
   </Card>
-  <Card title="x402 Protocol" icon="bolt" href="/essentials/x402-protocol">
-    Learn the technical details
+  <Card
+    title="SDK Integration"
+    icon="code"
+    href="/sdk/agent-sdk"
+  >
+    Use RelayAgent SDK
+  </Card>
+  <Card
+    title="MCP Tools"
+    icon="robot"
+    href="/mcp/overview"
+  >
+    Use x402 via MCP server
+  </Card>
+  <Card
+    title="Build Service"
+    icon="server"
+    href="/guides/build-service"
+  >
+    Create paid service
   </Card>
 </CardGroup>
