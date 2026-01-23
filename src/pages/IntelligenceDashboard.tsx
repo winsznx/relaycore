@@ -134,7 +134,13 @@ export function Explorer() {
         totalSessions: 0,
         activeAgents: 0,
         totalVolume: '0',
-        successRate: 0
+        successRate: 0,
+        sparklines: {
+            sessions: [] as number[],
+            agents: [] as number[],
+            volume: [] as number[],
+            success: [] as number[]
+        }
     });
 
     const fetchData = useCallback(async () => {
@@ -181,7 +187,10 @@ export function Explorer() {
         }
     }, []);
 
+    const [systemLoading, setSystemLoading] = useState(false);
+
     const fetchSystemData = async () => {
+        setSystemLoading(true);
         try {
             const [healthRes, metricsRes, tracesRes, alertsRes, indexersRes, connectionsRes] = await Promise.allSettled([
                 fetch('/api/observability/health'),
@@ -193,7 +202,8 @@ export function Explorer() {
             ]);
 
             if (healthRes.status === 'fulfilled' && healthRes.value.ok) {
-                setHealth(await healthRes.value.json());
+                const data = await healthRes.value.json();
+                setHealth(data);
             }
             if (metricsRes.status === 'fulfilled' && metricsRes.value.ok) {
                 const metricsData = await metricsRes.value.json();
@@ -203,22 +213,24 @@ export function Explorer() {
             }
             if (tracesRes.status === 'fulfilled' && tracesRes.value.ok) {
                 const tracesData = await tracesRes.value.json();
-                setTraces(tracesData.traces || []);
+                setTraces(Array.isArray(tracesData.traces) ? tracesData.traces : []);
             }
             if (alertsRes.status === 'fulfilled' && alertsRes.value.ok) {
                 const alertsData = await alertsRes.value.json();
-                setAlerts(alertsData.alerts || []);
+                setAlerts(Array.isArray(alertsData.alerts) ? alertsData.alerts : []);
             }
             if (indexersRes.status === 'fulfilled' && indexersRes.value.ok) {
                 const indexersData = await indexersRes.value.json();
-                setIndexers(indexersData.indexers || []);
+                setIndexers(Array.isArray(indexersData.indexers) ? indexersData.indexers : []);
             }
             if (connectionsRes.status === 'fulfilled' && connectionsRes.value.ok) {
                 const connectionsData = await connectionsRes.value.json();
-                setConnections(connectionsData.connections || []);
+                setConnections(Array.isArray(connectionsData.connections) ? connectionsData.connections : []);
             }
         } catch (error) {
             console.error('Failed to fetch system data:', error);
+        } finally {
+            setSystemLoading(false);
         }
     };
 
@@ -684,7 +696,7 @@ export function Explorer() {
                             title="Total Sessions"
                             value={stats.totalSessions.toString()}
                             icon={Layers}
-                            sparklineData={[2, 4, 3, 5, 4, 6, 5, 7, 6, 8, 7, 9]}
+                            sparklineData={stats.sparklines?.sessions?.length ? stats.sparklines.sessions : undefined}
                             sparklineColor="#3b82f6"
                             isLoading={loading}
                         />
@@ -692,7 +704,7 @@ export function Explorer() {
                             title="Active Agents"
                             value={stats.activeAgents.toString()}
                             icon={Bot}
-                            sparklineData={[1, 2, 2, 3, 3, 4, 4, 5, 5, 5, 6, 5]}
+                            sparklineData={stats.sparklines?.agents?.length ? stats.sparklines.agents : undefined}
                             sparklineColor="#10b981"
                             isLoading={loading}
                         />
@@ -700,7 +712,7 @@ export function Explorer() {
                             title="Total Volume"
                             value={formatCurrency(stats.totalVolume)}
                             icon={DollarSign}
-                            sparklineData={[100, 200, 150, 300, 250, 400, 350, 500, 450, 600, 550, 700]}
+                            sparklineData={stats.sparklines?.volume?.length ? stats.sparklines.volume : undefined}
                             sparklineColor="#8b5cf6"
                             isLoading={loading}
                         />
@@ -708,7 +720,7 @@ export function Explorer() {
                             title="Success Rate"
                             value={`${stats.successRate}%`}
                             icon={TrendingUp}
-                            sparklineData={[90, 92, 91, 94, 93, 95, 94, 96, 95, 97, 96, 98]}
+                            sparklineData={stats.sparklines?.success?.length ? stats.sparklines.success : undefined}
                             sparklineColor="#f59e0b"
                             isLoading={loading}
                         />
@@ -931,7 +943,26 @@ export function Explorer() {
                                         exit={{ opacity: 0 }}
                                         className="p-6 space-y-6"
                                     >
-                                        {!health && !sysMetrics && !traces.length && !alerts.length ? (
+                                        {/* Refresh Button */}
+                                        <div className="flex justify-end">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={fetchSystemData}
+                                                disabled={systemLoading}
+                                                className="gap-2"
+                                            >
+                                                <RefreshCw className={`h-4 w-4 ${systemLoading ? 'animate-spin' : ''}`} />
+                                                Refresh
+                                            </Button>
+                                        </div>
+
+                                        {systemLoading && !health && !sysMetrics ? (
+                                            <div className="text-center py-12">
+                                                <RefreshCw className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-2" />
+                                                <p className="text-gray-500">Loading system data...</p>
+                                            </div>
+                                        ) : !health && !sysMetrics && !traces.length && !alerts.length ? (
                                             <div className="text-center py-12">
                                                 <Activity className="h-16 w-16 text-gray-400 mx-auto mb-4" />
                                                 <h3 className="text-lg font-semibold text-gray-900 mb-2">System Monitoring</h3>

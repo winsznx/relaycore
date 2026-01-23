@@ -42,16 +42,26 @@ interface Payment {
     id: string;
     session_id: string;
     agent_address: string;
+    agent_name?: string;
     amount: string;
     execution_id: string;
     tx_hash: string;
     created_at: string;
+    status?: string;
+}
+
+interface AgentInfo {
+    address: string;
+    name: string;
+    totalSpent: number;
+    paymentCount: number;
 }
 
 export default function ACPSSessions() {
     const { address, isConnected } = useAppKitAccount();
     const [sessions, setSessions] = useState<Session[]>([]);
     const [payments, setPayments] = useState<Payment[]>([]);
+    const [sessionAgents, setSessionAgents] = useState<AgentInfo[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedSession, setSelectedSession] = useState<Session | null>(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -76,7 +86,12 @@ export default function ACPSSessions() {
             .order('created_at', { ascending: false })
             .limit(20);
 
-        setSessions(data || []);
+        // Map 'released' column to 'spent' for display
+        const mappedSessions = (data || []).map((s: any) => ({
+            ...s,
+            spent: s.released || s.spent || '0'
+        }));
+        setSessions(mappedSessions);
         setLoading(false);
     }
 
@@ -88,6 +103,24 @@ export default function ACPSSessions() {
             .order('created_at', { ascending: false });
 
         setPayments(data || []);
+
+        // Derive agent info from payments
+        const agentMap = new Map<string, AgentInfo>();
+        (data || []).forEach((payment: Payment) => {
+            const existing = agentMap.get(payment.agent_address.toLowerCase());
+            if (existing) {
+                existing.totalSpent += parseFloat(payment.amount) || 0;
+                existing.paymentCount += 1;
+            } else {
+                agentMap.set(payment.agent_address.toLowerCase(), {
+                    address: payment.agent_address,
+                    name: payment.agent_name || payment.agent_address,
+                    totalSpent: parseFloat(payment.amount) || 0,
+                    paymentCount: 1
+                });
+            }
+        });
+        setSessionAgents(Array.from(agentMap.values()));
     }
 
     function getStatusColor(status: string) {
@@ -295,17 +328,32 @@ export default function ACPSSessions() {
                                     </div>
                                 </div>
 
-                                {/* Authorized Agents */}
+                                {/* Agents Used */}
                                 <div className="mb-6">
-                                    <div className="text-xs text-gray-500 mb-2">Authorized Agents</div>
-                                    <div className="flex flex-wrap gap-2">
-                                        {(selectedSession.authorized_agents || []).map((agent, i) => (
-                                            <span key={i} className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">
-                                                {formatAddress(agent)}
-                                            </span>
+                                    <div className="text-xs text-gray-500 mb-2">Agents Used ({sessionAgents.length})</div>
+                                    <div className="space-y-2">
+                                        {sessionAgents.map((agent, i) => (
+                                            <div key={i} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                                <div>
+                                                    <span className="text-sm font-medium text-gray-900">
+                                                        {agent.name !== agent.address ? agent.name : formatAddress(agent.address)}
+                                                    </span>
+                                                    <div className="text-xs text-gray-500 font-mono">
+                                                        {formatAddress(agent.address)}
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-sm font-semibold text-orange-600">
+                                                        ${agent.totalSpent.toFixed(4)}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500">
+                                                        {agent.paymentCount} calls
+                                                    </div>
+                                                </div>
+                                            </div>
                                         ))}
-                                        {(!selectedSession.authorized_agents || selectedSession.authorized_agents.length === 0) && (
-                                            <span className="text-gray-400 text-sm">No agents authorized</span>
+                                        {sessionAgents.length === 0 && (
+                                            <span className="text-gray-400 text-sm">No agents used yet</span>
                                         )}
                                     </div>
                                 </div>

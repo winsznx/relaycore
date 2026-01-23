@@ -10,6 +10,7 @@
     "dev:all": "concurrently \"pnpm dev\" \"pnpm dev:graphql\" \"pnpm dev:indexers\"",
     "build": "vite build",
     "build:graphql": "tsc --project tsconfig.graphql.json",
+    "build:indexers": "tsc --project tsconfig.server.json",
     "start": "vite preview",
     "start:graphql": "node dist/api/graphql-server.js",
     "start:indexers": "node dist/init.js",

@@ -335,15 +335,38 @@ export function ServiceDetails({ serviceId, onBack, onCallService }: ServiceDeta
                         </CardHeader>
                         <CardContent>
                             {metrics.length > 0 ? (
-                                <div className="h-32 flex items-end gap-1">
-                                    {metrics.slice(0, 24).map((point, i) => (
-                                        <div
-                                            key={i}
-                                            className="flex-1 bg-blue-200 rounded-t hover:bg-blue-400 transition-colors"
-                                            style={{ height: `${Math.max(10, point.value)}%` }}
-                                            title={`${point.value} at ${new Date(point.timestamp).toLocaleString()}`}
-                                        />
-                                    ))}
+                                <div className="h-40 relative">
+                                    <div className="flex items-end gap-1 h-full">
+                                        {metrics.slice(0, 24).map((point, i) => {
+                                            const maxValue = Math.max(...metrics.slice(0, 24).map(m => m.value), 1);
+                                            const heightPercent = (point.value / maxValue) * 100;
+                                            return (
+                                                <div
+                                                    key={i}
+                                                    className="flex-1 bg-blue-400 rounded-t hover:bg-blue-600 transition-colors cursor-pointer group relative"
+                                                    style={{ height: `${Math.max(10, heightPercent)}%` }}
+                                                >
+                                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-10">
+                                                        <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap">
+                                                            <div className="font-semibold">{point.value.toFixed(1)}%</div>
+                                                            <div className="text-gray-400">
+                                                                {new Date(point.timestamp).toLocaleDateString(undefined, {
+                                                                    month: 'short',
+                                                                    day: 'numeric',
+                                                                    hour: '2-digit',
+                                                                    minute: '2-digit'
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="flex justify-between text-xs text-gray-400 mt-2">
+                                        <span>7 days ago</span>
+                                        <span>Now</span>
+                                    </div>
                                 </div>
                             ) : (
                                 <p className="text-gray-400 text-center py-8">No metrics data available</p>

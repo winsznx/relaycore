@@ -203,7 +203,7 @@ export function requirePayment(params: {
                                 // Use address if service lookup fails
                             }
 
-                            await supabase.from('session_payments').insert({
+                            const { error: paymentError } = await supabase.from('session_payments').insert({
                                 session_id: sessionId,
                                 agent_address: params.merchantAddress,
                                 agent_name: agentName,
@@ -211,8 +211,12 @@ export function requirePayment(params: {
                                 execution_id: sessionPaymentId,
                                 tx_hash: `session_${sessionId}_${newPaymentCount}`,
                                 payment_method: 'session_budget',
-                                status: 'success'
+                                status: 'completed' // Must match CHECK constraint: pending, completed, failed, refunded
                             });
+
+                            if (paymentError) {
+                                console.error('Failed to record session payment:', paymentError);
+                            }
 
                             // Grant entitlement
                             req.isEntitled = true;
