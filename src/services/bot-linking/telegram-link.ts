@@ -127,7 +127,14 @@ export async function completeBotLink(
     // Use RPC function to bypass schema cache issues
     const { data: apiKeyRecords, error: keyError } = await supabase.rpc('create_bot_api_key', {
         p_key_hash: keyHash,
-        p_user_address: request.wallet_address,
+        p_user_id: request.wallet_address,
+        p_permissions: {
+            read_services: true,
+            read_reputation: true,
+            read_outcomes: true,
+            read_payments: true,
+            execute_payments: false
+        },
         p_rate_limit: 100,
         p_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     });

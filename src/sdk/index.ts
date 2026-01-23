@@ -32,6 +32,11 @@ export {
     type WorkflowResult,
     type OutcomeRecord as AgentOutcome,
     type AgentMemory,
+    type AgentCard,
+    type AgentCardResource,
+    type TaskArtifact,
+    type TaskState,
+    type TaskStats,
 } from './relay-agent';
 
 // RelayService - For service providers
@@ -96,3 +101,53 @@ export {
 // Re-export types for convenience
 export type { PaymentRequirements } from '@crypto.com/facilitator-client';
 
+// =============================================================================
+// X402 PROTOCOL (Cronos Standard)
+// =============================================================================
+
+export {
+    requireX402,
+    handleX402Settlement,
+    generatePaymentId,
+    isEntitled,
+    getEntitlement,
+    recordEntitlement,
+    createPaymentRequirements,
+} from './lib/x402';
+
+export type {
+    X402Accepts,
+    X402Response,
+    X402PaidRecord,
+    X402PayResult,
+    X402ProtectionOptions,
+    X402PayParams,
+} from './types/x402.types';
+
+// =============================================================================
+// CHAT TYPES (Control Plane Architecture)
+// =============================================================================
+
+export type {
+    ChatMode,
+    ChatResponseType,
+    ChatRequest,
+    ChatResponse,
+    ChatAction,
+    SimulationResult,
+} from './types/chat.types';
+
+export { CHAT_CAPABILITIES, PROHIBITED_OPERATIONS } from './types/chat.types';
+
+// =============================================================================
+// RWA SDK (State Machine & Asset Management)
+// =============================================================================
+
+export {
+    RelayRWASDK,
+    createRWASDK,
+    type RWAConfig,
+    type RWAStateMachine,
+    type TransitionParams,
+    type TransitionResult
+} from './relay-rwa';

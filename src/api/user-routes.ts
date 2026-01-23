@@ -1,326 +1,194 @@
-/**
- * User Profile & Settings API Routes
- * 
- * REST endpoints for user configuration, preferences, and API keys
- * All data is secured by wallet address
- */
-
-import { Router, type Request, type Response } from 'express';
-import { supabase } from '../lib/supabase.js';
-import logger from '../lib/logger.js';
+import { Router } from 'express';
+import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 
 const router = Router();
 
-/**
- * Hash an API key for storage
- */
-function hashApiKey(apiKey: string): string {
-    return crypto.createHash('sha256').update(apiKey).digest('hex');
-}
+const supabase = createClient(
+    process.env.VITE_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-/**
- * Generate a secure API key
- */
-function generateSecureApiKey(): string {
-    const bytes = crypto.randomBytes(32);
-    return `rc_${bytes.toString('base64url')}`;
-}
-
-// ============================================================================
-// PROFILE ENDPOINTS
-// ============================================================================
-
-/**
- * GET /api/user/profile
- * Get user profile by wallet address
- */
-router.get('/profile', async (req: Request, res: Response) => {
+router.post('/api-keys', async (req, res) => {
     try {
-        const walletAddress = (req.query.wallet as string)?.toLowerCase();
+        const { walletAddress } = req.body;
 
         if (!walletAddress) {
-            return res.status(400).json({
-                success: false,
-                error: 'wallet query parameter is required',
-            });
+            return res.status(400).json({ error: 'Wallet address required' });
         }
 
-        // Fetch profile
-        const { data: profile } = await supabase
-            .from('user_profiles')
-            .select('*')
-            .eq('wallet_address', walletAddress)
-            .single();
-
-        // Fetch notification settings
-        const { data: notifications } = await supabase
-            .from('notification_settings')
-            .select('*')
-            .eq('wallet_address', walletAddress)
-            .single();
-
-        // Fetch API keys (without the hash)
-        const { data: apiKeys } = await supabase
+        const { data: existingKey } = await supabase
             .from('api_keys')
-            .select('id, name, created_at, last_used_at, is_active')
+            .select('id')
             .eq('user_id', walletAddress)
-            .eq('is_active', true);
+            .eq('is_active', true)
+            .single();
 
-        // Fetch linked bot accounts
-        const { data: linkedAccounts } = await supabase
-            .from('linked_bot_accounts')
-            .select('id, platform, platform_username, linked_at, is_active')
-            .eq('wallet_address', walletAddress)
-            .eq('is_active', true);
-
-        res.json({
-            displayName: profile?.display_name || '',
-            email: profile?.email || '',
-            avatarUrl: profile?.avatar_url || '',
-            notifications: notifications ? {
-                payments: notifications.notify_payments_received,
-                services: notifications.notify_service_calls,
-                reputation: notifications.notify_reputation_changes,
-                health: notifications.notify_health_alerts,
-                dailySummary: notifications.notify_daily_summary,
-            } : {
-                payments: true,
-                services: true,
-                reputation: true,
-                health: true,
-                dailySummary: false,
-            },
-            apiKeys: (apiKeys || []).map(k => ({
-                id: k.id,
-                name: k.name,
-                created: k.created_at,
-                lastUsed: k.last_used_at || 'Never',
-            })),
-            linkedAccounts: (linkedAccounts || []).map(a => ({
-                id: a.id,
-                platform: a.platform,
-                username: a.platform_username || 'Unknown',
-                linkedAt: a.linked_at,
-            })),
-        });
-    } catch (error) {
-        logger.error('Failed to fetch profile', error as Error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to fetch profile',
-        });
-    }
-});
-
-/**
- * POST /api/user/profile
- * Create or update user profile
- */
-router.post('/profile', async (req: Request, res: Response) => {
-    try {
-        const { walletAddress, displayName, email } = req.body;
-
-        if (!walletAddress) {
-            return res.status(400).json({
-                success: false,
-                error: 'walletAddress is required',
-            });
+        if (existingKey) {
+            return res.status(400).json({ error: 'You already have an active API key. Revoke it first to generate a new one.' });
         }
 
-        const normalizedAddress = walletAddress.toLowerCase();
+        const apiKey = `rk_${crypto.randomBytes(32).toString('hex')}`;
+        const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
 
-        // Upsert profile
-        const { error } = await supabase
-            .from('user_profiles')
-            .upsert({
-                wallet_address: normalizedAddress,
-                display_name: displayName || null,
-                email: email || null,
-                updated_at: new Date().toISOString(),
-            }, {
-                onConflict: 'wallet_address',
-            });
-
-        if (error) {
-            throw error;
-        }
-
-        logger.info('Profile updated', { wallet: normalizedAddress.slice(0, 10) + '...' });
-
-        res.json({
-            success: true,
-            message: 'Profile updated',
-        });
-    } catch (error) {
-        logger.error('Failed to update profile', error as Error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to update profile',
-        });
-    }
-});
-
-// ============================================================================
-// NOTIFICATION ENDPOINTS
-// ============================================================================
-
-/**
- * POST /api/user/notifications
- * Update notification preferences
- */
-router.post('/notifications', async (req: Request, res: Response) => {
-    try {
-        const { walletAddress, payments, services, reputation, health, dailySummary } = req.body;
-
-        if (!walletAddress) {
-            return res.status(400).json({
-                success: false,
-                error: 'walletAddress is required',
-            });
-        }
-
-        const normalizedAddress = walletAddress.toLowerCase();
-
-        // Ensure profile exists first
-        await supabase.from('user_profiles').upsert({
-            wallet_address: normalizedAddress,
-        }, { onConflict: 'wallet_address' });
-
-        // Upsert notification settings
-        const { error } = await supabase
-            .from('notification_settings')
-            .upsert({
-                wallet_address: normalizedAddress,
-                notify_payments_received: payments ?? true,
-                notify_payments_sent: payments ?? true,
-                notify_service_calls: services ?? true,
-                notify_reputation_changes: reputation ?? true,
-                notify_health_alerts: health ?? true,
-                notify_daily_summary: dailySummary ?? false,
-                updated_at: new Date().toISOString(),
-            }, {
-                onConflict: 'wallet_address',
-            });
-
-        if (error) {
-            throw error;
-        }
-
-        logger.info('Notification settings updated', { wallet: normalizedAddress.slice(0, 10) + '...' });
-
-        res.json({
-            success: true,
-            message: 'Notification settings updated',
-        });
-    } catch (error) {
-        logger.error('Failed to update notifications', error as Error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to update notifications',
-        });
-    }
-});
-
-// ============================================================================
-// API KEY ENDPOINTS
-// ============================================================================
-
-/**
- * POST /api/user/api-keys
- * Generate a new API key
- */
-router.post('/api-keys', async (req: Request, res: Response) => {
-    try {
-        const { walletAddress, name } = req.body;
-
-        if (!walletAddress) {
-            return res.status(400).json({
-                success: false,
-                error: 'walletAddress is required',
-            });
-        }
-
-        const normalizedAddress = walletAddress.toLowerCase();
-
-        // Generate secure API key
-        const apiKey = generateSecureApiKey();
-        const keyHash = hashApiKey(apiKey);
-
-        // Store hashed key with restricted permissions
         const { data, error } = await supabase
             .from('api_keys')
             .insert({
                 key_hash: keyHash,
-                user_id: normalizedAddress,
-                name: name || 'Default Key',
+                user_id: walletAddress,
+                name: 'SDK Key',
                 permissions: {
                     read_services: true,
                     read_reputation: true,
                     read_outcomes: true,
                     read_payments: true,
-                    execute_payments: false, // CRITICAL: Never allow payment execution
+                    execute_payments: false
                 },
-                rate_limit: 100, // 100 requests per hour
-                expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year
-                is_active: true,
+                rate_limit: 100,
+                expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
             })
             .select()
             .single();
 
-        if (error) {
-            throw error;
-        }
+        if (error) throw error;
 
-        logger.info('API key generated', { wallet: normalizedAddress.slice(0, 10) + '...' });
-
-        // Return the key ONLY ONCE - user must copy it now
         res.json({
-            success: true,
             id: data.id,
+            key: apiKey,
             name: data.name,
-            key: apiKey, // Only returned once!
-            message: 'API key generated. Copy it now - you won\'t see it again!',
+            created_at: data.created_at
         });
     } catch (error) {
-        logger.error('Failed to generate API key', error as Error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to generate API key',
-        });
+        console.error('API key generation error:', error);
+        res.status(500).json({ error: 'Failed to generate API key' });
     }
 });
 
-/**
- * DELETE /api/user/api-keys/:keyId
- * Revoke an API key
- */
-router.delete('/api-keys/:keyId', async (req: Request, res: Response) => {
+router.delete('/api-keys/:id', async (req, res) => {
     try {
-        const { keyId } = req.params;
+        const { id } = req.params;
+        const { walletAddress } = req.body;
 
-        // Deactivate the key (don't delete for audit trail)
+        if (!walletAddress) {
+            return res.status(400).json({ error: 'Wallet address required' });
+        }
+
         const { error } = await supabase
             .from('api_keys')
             .update({ is_active: false })
-            .eq('id', keyId);
+            .eq('id', id)
+            .eq('user_id', walletAddress);
 
-        if (error) {
+        if (error) throw error;
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('API key revocation error:', error);
+        res.status(500).json({ error: 'Failed to revoke API key' });
+    }
+});
+
+router.get('/api-keys', async (req, res) => {
+    try {
+        const { walletAddress } = req.query;
+
+        if (!walletAddress) {
+            return res.status(400).json({ error: 'Wallet address required' });
+        }
+
+        const { data, error } = await supabase
+            .from('api_keys')
+            .select('id, name, created_at, last_used_at, is_active, rate_limit, queries_used')
+            .eq('user_id', walletAddress)
+            .eq('is_active', true);
+
+        if (error) throw error;
+
+        res.json(data || []);
+    } catch (error) {
+        console.error('API key fetch error:', error);
+        res.status(500).json({ error: 'Failed to fetch API keys' });
+    }
+});
+
+router.get('/profile', async (req, res) => {
+    try {
+        const { wallet } = req.query;
+
+        if (!wallet) {
+            return res.status(400).json({ error: 'Wallet address required' });
+        }
+
+        const { data, error } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('wallet_address', (wallet as string).toLowerCase())
+            .single();
+
+        if (error && error.code !== 'PGRST116') {
             throw error;
         }
 
-        logger.info('API key revoked', { keyId });
+        // Transform to camelCase for frontend
+        const profile = data ? {
+            walletAddress: data.wallet_address,
+            displayName: data.display_name || '',
+            email: data.email || '',
+            notifications: {
+                payments: data.notification_preferences?.payments ?? true,
+                services: data.notification_preferences?.services ?? true,
+                reputation: data.notification_preferences?.reputation ?? true,
+                health: data.notification_preferences?.health ?? false,
+                dailySummary: data.notification_preferences?.dailySummary ?? false
+            }
+        } : {
+            walletAddress: wallet,
+            displayName: '',
+            email: '',
+            notifications: {
+                payments: true,
+                services: true,
+                reputation: true,
+                health: false,
+                dailySummary: false
+            }
+        };
 
-        res.json({
-            success: true,
-            message: 'API key revoked',
-        });
+        res.json(profile);
     } catch (error) {
-        logger.error('Failed to revoke API key', error as Error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to revoke API key',
-        });
+        console.error('Profile fetch error:', error);
+        res.status(500).json({ error: 'Failed to fetch profile' });
+    }
+});
+
+router.post('/profile', async (req, res) => {
+    try {
+        const { walletAddress, displayName, email, notificationPreferences } = req.body;
+
+        if (!walletAddress) {
+            return res.status(400).json({ error: 'Wallet address required' });
+        }
+
+        const { data, error } = await supabase
+            .from('user_profiles')
+            .upsert({
+                wallet_address: walletAddress.toLowerCase(),
+                display_name: displayName,
+                email: email,
+                notification_preferences: notificationPreferences,
+                updated_at: new Date().toISOString()
+            }, {
+                onConflict: 'wallet_address'
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        res.json(data);
+    } catch (error) {
+        console.error('Profile save error:', error);
+        res.status(500).json({ error: 'Failed to save profile' });
     }
 });
 

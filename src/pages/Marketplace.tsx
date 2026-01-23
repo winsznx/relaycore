@@ -679,7 +679,7 @@ export function Marketplace() {
                                 <Button
                                     variant="outline"
                                     className="bg-white text-black hover:bg-gray-100 border-0"
-                                    onClick={() => navigate('/docs')}
+                                    onClick={() => window.location.href = 'https://docs.relaycore.xyz'}
                                 >
                                     Read Docs
                                 </Button>
@@ -705,7 +705,7 @@ export function Marketplace() {
                             <span className="font-bold">Relay Core</span>
                         </div>
                         <div className="flex gap-6 text-sm text-gray-500">
-                            <Link to="/docs" className="hover:text-gray-900">Documentation</Link>
+                            <a href="https://docs.relaycore.xyz" className="hover:text-gray-900">Documentation</a>
                             <Link to="/dashboard" className="hover:text-gray-900">Dashboard</Link>
                             <Link to="/terms" className="hover:text-gray-900">Terms</Link>
                             <Link to="/privacy" className="hover:text-gray-900">Privacy</Link>

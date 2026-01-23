@@ -199,3 +199,126 @@ export async function getReputationScore(address: string, tag: string = 'overall
     );
     return Number(result);
 }
+
+// ============================================
+// ESCROW SESSION CONTRACT QUERIES
+// ============================================
+
+import { ESCROW_ABI } from '../config/constants.js';
+
+/**
+ * Query EscrowSession contract events.
+ */
+export async function queryEscrowEvents(
+    eventName: string,
+    fromBlock: number,
+    toBlock: number
+): Promise<ethers.EventLog[]> {
+    try {
+        const escrowAddress = INDEXER_CONFIG.ESCROW_CONTRACT;
+        if (!escrowAddress || escrowAddress === '0x0000000000000000000000000000000000000000') {
+            logger.debug('Escrow contract not configured, skipping event query');
+            return [];
+        }
+
+        const contract = new ethers.Contract(escrowAddress, ESCROW_ABI, getProvider());
+        const filter = contract.filters[eventName]();
+        const events = await contract.queryFilter(filter, fromBlock, toBlock);
+        return events.filter((e): e is ethers.EventLog => e instanceof ethers.EventLog);
+    } catch (error) {
+        logger.error('Failed to query escrow events', error as Error, {
+            eventName,
+            fromBlock,
+            toBlock
+        });
+        throw error;
+    }
+}
+
+/**
+ * Get escrow session details from contract.
+ */
+export async function getEscrowSession(sessionId: string): Promise<{
+    owner: string;
+    escrowAgent: string;
+    deposited: bigint;
+    released: bigint;
+    remaining: bigint;
+    maxSpend: bigint;
+    expiry: bigint;
+    active: boolean;
+} | null> {
+    try {
+        const escrowAddress = INDEXER_CONFIG.ESCROW_CONTRACT;
+        if (!escrowAddress || escrowAddress === '0x0000000000000000000000000000000000000000') {
+            return null;
+        }
+
+        const result = await callContractView<[string, string, bigint, bigint, bigint, bigint, bigint, boolean]>(
+            escrowAddress,
+            ESCROW_ABI,
+            'getSession',
+            [sessionId]
+        );
+
+        return {
+            owner: result[0],
+            escrowAgent: result[1],
+            deposited: result[2],
+            released: result[3],
+            remaining: result[4],
+            maxSpend: result[5],
+            expiry: result[6],
+            active: result[7]
+        };
+    } catch (error) {
+        logger.error('Failed to get escrow session', error as Error, { sessionId });
+        return null;
+    }
+}
+
+/**
+ * Check if agent is authorized for session.
+ */
+export async function isAgentAuthorized(sessionId: string, agentAddress: string): Promise<boolean> {
+    try {
+        const escrowAddress = INDEXER_CONFIG.ESCROW_CONTRACT;
+        if (!escrowAddress || escrowAddress === '0x0000000000000000000000000000000000000000') {
+            return false;
+        }
+
+        return await callContractView<boolean>(
+            escrowAddress,
+            ESCROW_ABI,
+            'isAgentAuthorized',
+            [sessionId, agentAddress]
+        );
+    } catch (error) {
+        logger.error('Failed to check agent authorization', error as Error, { sessionId, agentAddress });
+        return false;
+    }
+}
+
+/**
+ * Get total session count from contract.
+ */
+export async function getSessionCount(): Promise<number> {
+    try {
+        const escrowAddress = INDEXER_CONFIG.ESCROW_CONTRACT;
+        if (!escrowAddress || escrowAddress === '0x0000000000000000000000000000000000000000') {
+            return 0;
+        }
+
+        const result = await callContractView<bigint>(
+            escrowAddress,
+            ESCROW_ABI,
+            'sessionCounter',
+            []
+        );
+        return Number(result);
+    } catch (error) {
+        logger.error('Failed to get session count', error as Error);
+        return 0;
+    }
+}
+

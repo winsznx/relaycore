@@ -99,18 +99,10 @@ export function IntegrationStatus() {
     async function checkCronosRPC() {
         const start = Date.now();
         try {
-            const response = await fetch(import.meta.env.VITE_CRONOS_RPC_URL || 'https://evm-t3.cronos.org', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    jsonrpc: '2.0',
-                    method: 'eth_chainId',
-                    params: [],
-                    id: 1
-                })
-            });
+            const response = await fetch('/api/health/rpc');
             const latency = Date.now() - start;
-            updateIntegration('Cronos RPC', response.ok ? 'connected' : 'disconnected', latency);
+            const data = await response.json();
+            updateIntegration('Cronos RPC', data.status === 'connected' ? 'connected' : 'disconnected', latency);
         } catch {
             updateIntegration('Cronos RPC', 'disconnected');
         }

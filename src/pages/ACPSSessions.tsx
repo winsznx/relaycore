@@ -16,12 +16,15 @@ import {
     Plus,
     ExternalLink,
     Shield,
-    Zap
+    Zap,
+    AlertCircle
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { CreateSessionModal } from '@/components/CreateSessionModal';
+import { useAppKitAccount } from '@reown/appkit/react';
 
 interface Session {
-    session_id: number;
+    session_id: string;
     owner_address: string;
     max_spend: string;
     deposited: string;
@@ -32,11 +35,12 @@ interface Session {
     created_at: string;
     authorized_agents: string[];
     deposit_tx_hash?: string;
+    is_active: boolean;
 }
 
 interface Payment {
     id: string;
-    session_id: number;
+    session_id: string;
     agent_address: string;
     amount: string;
     execution_id: string;
@@ -45,20 +49,30 @@ interface Payment {
 }
 
 export default function ACPSSessions() {
+    const { address, isConnected } = useAppKitAccount();
     const [sessions, setSessions] = useState<Session[]>([]);
     const [payments, setPayments] = useState<Payment[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+    const [showCreateModal, setShowCreateModal] = useState(false);
 
     useEffect(() => {
-        loadSessions();
-    }, []);
+        if (isConnected && address) {
+            loadSessions();
+        } else {
+            setSessions([]);
+            setLoading(false);
+        }
+    }, [isConnected, address]);
 
     async function loadSessions() {
+        if (!address) return;
+
         setLoading(true);
         const { data } = await supabase
             .from('escrow_sessions')
             .select('*')
+            .eq('owner_address', address.toLowerCase())
             .order('created_at', { ascending: false })
             .limit(20);
 
@@ -66,7 +80,7 @@ export default function ACPSSessions() {
         setLoading(false);
     }
 
-    async function loadPayments(sessionId: number) {
+    async function loadPayments(sessionId: string) {
         const { data } = await supabase
             .from('session_payments')
             .select('*')
@@ -89,6 +103,24 @@ export default function ACPSSessions() {
         return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
     }
 
+    // Show connect wallet message if not connected
+    if (!isConnected) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4">
+                <div className="max-w-md mx-auto mt-20">
+                    <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+                        <AlertCircle className="w-16 h-16 text-orange-500 mx-auto mb-4" />
+                        <h2 className="text-2xl font-bold text-gray-900 mb-2">Connect Wallet</h2>
+                        <p className="text-gray-600 mb-6">
+                            Connect your wallet to view and manage your x402 payment sessions.
+                        </p>
+                        <appkit-button />
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4">
             <div className="max-w-7xl mx-auto">
@@ -100,16 +132,26 @@ export default function ACPSSessions() {
                             x402 Sessions
                         </h1>
                         <p className="text-gray-600 mt-1">
-                            Gasless payment sessions powered by x402 protocol
+                            Your gasless payment sessions powered by x402 protocol
                         </p>
                     </div>
-                    <button
-                        onClick={loadSessions}
-                        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition"
-                    >
-                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                        Refresh
-                    </button>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={loadSessions}
+                            disabled={!address}
+                            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
+                        >
+                            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                            Refresh
+                        </button>
+                        <button
+                            onClick={() => setShowCreateModal(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition"
+                        >
+                            <Plus className="w-4 h-4" />
+                            Create Session
+                        </button>
+                    </div>
                 </div>
 
                 {/* Stats */}
@@ -121,7 +163,7 @@ export default function ACPSSessions() {
                     <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
                         <div className="text-sm text-gray-500">Active Sessions</div>
                         <div className="text-2xl font-bold text-green-600">
-                            {sessions.filter(s => s.status === 'active').length}
+                            {sessions.filter(s => s.is_active).length}
                         </div>
                     </div>
                     <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
@@ -164,7 +206,7 @@ export default function ACPSSessions() {
                                 <div className="p-8 text-center text-gray-500">
                                     <Wallet className="w-12 h-12 mx-auto mb-3 opacity-50" />
                                     <p>No sessions yet</p>
-                                    <p className="text-sm mt-1">Create a session via MCP tools</p>
+                                    <p className="text-sm mt-1">Click "Create Session" to get started</p>
                                 </div>
                             ) : (
                                 sessions.map(session => (
@@ -182,8 +224,8 @@ export default function ACPSSessions() {
                                             <span className="font-semibold text-gray-900">
                                                 Session #{session.session_id}
                                             </span>
-                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(session.status)}`}>
-                                                {session.status}
+                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${session.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
+                                                {session.is_active ? 'Active' : 'Inactive'}
                                             </span>
                                         </div>
                                         <div className="text-sm text-gray-500 mb-2">
@@ -300,6 +342,38 @@ export default function ACPSSessions() {
                                         )}
                                     </div>
                                 </div>
+
+                                {/* Refund Button */}
+                                {selectedSession.is_active && parseFloat(selectedSession.max_spend) - parseFloat(selectedSession.spent || '0') > 0 && (
+                                    <div className="pt-4 border-t border-gray-100">
+                                        <button
+                                            onClick={async () => {
+                                                if (!confirm(`Refund $${(parseFloat(selectedSession.max_spend) - parseFloat(selectedSession.spent || '0')).toFixed(2)} from this session?`)) return;
+
+                                                try {
+                                                    const response = await fetch(`/api/sessions/${selectedSession.session_id}/refund`, {
+                                                        method: 'POST',
+                                                    });
+
+                                                    if (!response.ok) {
+                                                        throw new Error('Refund failed');
+                                                    }
+
+                                                    const result = await response.json();
+                                                    alert(`Refund successful! ${result.refundAmount} USDC returned.`);
+                                                    loadSessions();
+                                                    setSelectedSession(null);
+                                                } catch (error) {
+                                                    alert('Refund failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+                                                }
+                                            }}
+                                            className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2"
+                                        >
+                                            <RefreshCw className="w-4 h-4" />
+                                            Refund Remaining Balance
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <div className="p-8 text-center text-gray-500">
@@ -344,6 +418,13 @@ export default function ACPSSessions() {
                         </div>
                     </div>
                 </div>
+
+                {/* Create Session Modal */}
+                <CreateSessionModal
+                    isOpen={showCreateModal}
+                    onClose={() => setShowCreateModal(false)}
+                    onSuccess={loadSessions}
+                />
             </div>
         </div>
     );

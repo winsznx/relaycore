@@ -1,0 +1,38 @@
+{
+    "name": "@relaycore/sdk",
+    "version": "1.0.0",
+    "description": "The official SDK for Relay Core - Build AI Agents and Services on Cronos",
+    "main": "dist/index.js",
+    "module": "dist/index.mjs",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "tsup",
+        "lint": "eslint .",
+        "test": "vitest"
+    },
+    "keywords": [
+        "relaycore",
+        "cronos",
+        "ai",
+        "agents",
+        "sdk",
+        "x402"
+    ],
+    "author": "Relay Core Team",
+    "license": "MIT",
+    "dependencies": {
+        "@crypto.com/facilitator-client": "^1.0.2",
+        "@reown/appkit": "^1.8.16",
+        "ethers": "^6.13.4",
+        "siwe": "^3.0.0"
+    },
+    "devDependencies": {
+        "@types/express": "^5.0.6",
+        "tsup": "^8.3.5",
+        "typescript": "^5.6.3",
+        "vitest": "^2.1.8"
+    },
+    "publishConfig": {
+        "access": "public"
+    }
+}

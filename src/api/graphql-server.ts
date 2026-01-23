@@ -117,6 +117,22 @@ async function startServers() {
     const agentRoutes = await import('./routes/agents.js');
     app.use('/api/agents', agentRoutes.default);
 
+    // Escrow Session Routes
+    const sessionRoutes = await import('./session-routes.js');
+    app.use('/api/sessions', sessionRoutes.default);
+
+    // A2A Discovery Routes (/.well-known/agent-card.json)
+    const wellKnownRoutes = await import('./well-known-routes.js');
+    app.use('/.well-known', wellKnownRoutes.default);
+
+    // Task Artifacts Routes
+    const taskRoutes = await import('./task-routes.js');
+    app.use('/api/tasks', taskRoutes.default);
+
+    // Meta-Agent Routes (Agent discovery and hiring)
+    const metaAgentRoutes = await import('./meta-agent-routes.js');
+    app.use('/api/meta-agent', metaAgentRoutes.default);
+
     // Initialize agents (auto-registers PerpAI agents)
     await import('../services/agents/index.js');
     console.log('Agent registry initialized with PerpAI agents');
@@ -124,6 +140,26 @@ async function startServers() {
     // Payment routes (x402)
     const paymentRoutes = await import('./payment-routes.js');
     app.use('/api', paymentRoutes.default);
+
+    // Explorer Routes (Indexed data: sessions, transactions, agents, payments)
+    const explorerRoutes = await import('./explorer.js');
+    app.use('/api/explorer', explorerRoutes.default);
+
+    // Observability Routes (Health, metrics, traces, alerts)
+    const observabilityRoutes = await import('./observability.js');
+    app.use('/api/observability', observabilityRoutes.default);
+
+    // RWA Routes (Real-World Asset tokenization)
+    const rwaRoutes = await import('./rwa.js');
+    app.use('/api/rwa', rwaRoutes.default);
+
+    // RWA State Machine Routes (Agent-mediated settlement)
+    const rwaStateMachineRoutes = await import('./rwa-state-machine.js');
+    app.use('/api/rwa/state-machine', rwaStateMachineRoutes.default);
+
+    // RWA Agent Coordination Routes (Multi-agent orchestration)
+    const rwaCoordinationRoutes = await import('./rwa-coordination.js');
+    app.use('/api/rwa/coordination', rwaCoordinationRoutes.default);
 
     // x402 Settlement Endpoint
     app.post('/api/pay', async (req, res) => {
@@ -171,14 +207,87 @@ async function startServers() {
         }
     });
 
+    // RPC Health Check Endpoint (proxy to avoid CORS)
+    app.get('/api/health/rpc', async (req, res) => {
+        try {
+            const rpcUrl = process.env.CRONOS_RPC_URL || 'https://evm-t3.cronos.org';
+            const response = await fetch(rpcUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    method: 'eth_chainId',
+                    params: [],
+                    id: 1
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.result) {
+                res.json({
+                    status: 'connected',
+                    chainId: data.result,
+                    rpcUrl
+                });
+            } else {
+                res.status(503).json({
+                    status: 'disconnected',
+                    error: 'Invalid RPC response'
+                });
+            }
+        } catch (error: any) {
+            logger.error('RPC health check failed', error);
+            res.status(503).json({
+                status: 'disconnected',
+                error: error.message
+            });
+        }
+    });
+
+    // Global Health Check
+    app.get('/health', (req, res) => {
+        res.status(200).send('OK');
+    });
+
+    // Signing Interface (Simple HTML for demo purposes)
+    app.get('/sign/:txId', (req, res) => {
+        const { txId } = req.params;
+        res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Sign Transaction</title>
+                <style>
+                    body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f5; }
+                    .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; width: 100%; text-align: center; }
+                    h2 { margin-top: 0; color: #1a1a1a; }
+                    .tx-id { background: #f0f0f0; padding: 0.5rem; border-radius: 4px; font-family: monospace; word-break: break-all; margin: 1rem 0; font-size: 0.9rem; }
+                    button { background: #000; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 1rem; width: 100%; }
+                    button:hover { background: #333; }
+                </style>
+            </head>
+            <body>
+                <div class="card">
+                    <h2>Sign transaction</h2>
+                    <p>You are about to sign and authorize the following transaction:</p>
+                    <div class="tx-id">${txId}</div>
+                    <button onclick="alert('Transaction signed successfully! (Demo mode)'); window.close()">Sign & Submit</button>
+                    <p style="margin-top: 1rem; color: #666; font-size: 0.8rem;">Powered by Relay Core</p>
+                </div>
+            </body>
+            </html>
+        `);
+    });
+
     app.listen(4001, () => {
         console.log(`x402 Settlement Endpoint at http://localhost:4001/api/pay`);
     });
 
     // 3. Start Indexers (PerpAI, Temporal, Graph)
     try {
-        const { startAllIndexers } = await import('../services/indexer/index.js');
-        await startAllIndexers();
+        const { startIndexers } = await import('../services/indexer/index.js');
+        await startIndexers();
         console.log('All indexers started successfully');
     } catch (error) {
         logger.warn('Failed to start indexers (non-blocking)', error as Error);

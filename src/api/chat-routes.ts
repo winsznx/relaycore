@@ -2,11 +2,11 @@
  * Claude Chat API Route
  * 
  * REST endpoint for AI chat interactions
- * Connects frontend AIChat component to Claude agent service
+ * Uses LangGraph for proper state management and tool orchestration
  */
 
 import { Router, type Request, type Response } from 'express';
-import { agentChat } from '../services/ai/relay-agent-service.js';
+import { processChat } from '../services/chat/index.js';
 import logger from '../lib/logger.js';
 
 const router = Router();
@@ -16,17 +16,19 @@ interface ChatRequest {
     walletAddress?: string;
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
     sessionId?: string;
+    agentId?: string;
+    taskId?: string;
 }
 
 /**
  * POST /api/chat
- * Main chat endpoint for Claude AI
+ * Main chat endpoint using LangGraph
  */
 router.post('/', async (req: Request, res: Response) => {
     const startTime = Date.now();
 
     try {
-        const { message, walletAddress, conversationHistory, sessionId } = req.body as ChatRequest;
+        const { message, walletAddress, sessionId, agentId, taskId } = req.body as ChatRequest;
 
         // Validate request
         if (!message || typeof message !== 'string') {
@@ -44,85 +46,46 @@ router.post('/', async (req: Request, res: Response) => {
             });
         }
 
-        // Validate conversation history
-        const validHistory = (conversationHistory || [])
-            .filter(msg => msg.role === 'user' || msg.role === 'assistant')
-            .slice(-20); // Max 20 messages
-
-        logger.info('Agent chat request', {
+        logger.info('Chat request', {
             messageLength: message.length,
             hasWallet: !!walletAddress,
-            historyLength: validHistory.length,
+            sessionId,
         });
 
-        // SOP 1: Intent Classification (< 50ms)
-        const { classifyIntent, executeFastPath } = await import('../services/ai/intent-classifier.js');
-        const intent = classifyIntent(message);
-
-        logger.info('Intent classified', {
-            type: intent.type,
-            confidence: intent.confidence,
-            requiresLLM: intent.requiresLLM,
-            tool: intent.tool,
+        // Process through LangGraph
+        const result = await processChat(message, {
+            walletAddress,
+            sessionId,
+            agentId,
+            taskId,
         });
-
-        // SOP 4: Fast path for simple queries (< 300ms total)
-        if (!intent.requiresLLM && intent.tool) {
-            try {
-                const fastResponse = await executeFastPath(intent, { walletAddress });
-                const processingTimeMs = Date.now() - startTime;
-
-                logger.info('Fast path response', {
-                    processingTimeMs,
-                    tool: intent.tool,
-                });
-
-                return res.json({
-                    success: true,
-                    message: fastResponse,
-                    sessionId: sessionId || 'default',
-                    processingTimeMs,
-                    fastPath: true,
-                });
-            } catch (error) {
-                logger.warn('Fast path failed, falling back to LLM', error as Error);
-                // Fall through to LLM path
-            }
-        }
-
-        // Slow path: Call Relay Agent with LLM (SOP 2: Data-first, tool-first)
-        const response = await agentChat(
-            [...validHistory, { role: 'user', content: message }],
-            {
-                walletAddress,
-                sessionId: sessionId || 'default',
-            }
-        );
 
         const processingTimeMs = Date.now() - startTime;
 
-        // Log successful response
-        logger.info('Agent response sent', {
+        logger.info('Chat response sent', {
             sessionId: sessionId || 'default',
             processingTimeMs,
-            tokensUsed: response.usage.inputTokens + response.usage.outputTokens,
-            toolCallsCount: response.toolCalls?.length || 0,
-            dataSources: response.toolCalls?.map(t => t.dataSource).join(', ') || 'none',
+            toolCallsCount: result.toolCalls?.length || 0,
+            requiresApproval: result.requiresApproval,
+            hasError: !!result.error,
         });
 
         res.json({
-            success: true,
-            message: response.content,
-            toolCalls: response.toolCalls,
+            success: !result.error,
+            message: result.response,
+            toolCalls: result.toolCalls,
+            requiresApproval: result.requiresApproval,
+            approvalActions: result.approvalActions,
             sessionId: sessionId || 'default',
             processingTimeMs,
+            error: result.error,
         });
     } catch (error) {
-        logger.error('Agent chat error', error as Error);
+        logger.error('Chat error', error as Error);
 
         res.status(500).json({
             success: false,
-            error: 'Failed to process agent request',
+            error: 'Failed to process chat request',
             processingTimeMs: Date.now() - startTime,
         });
     }
@@ -145,9 +108,10 @@ router.get('/health', async (_req: Request, res: Response) => {
 /**
  * POST /api/chat/stream
  * Streaming chat endpoint (Server-Sent Events)
+ * TODO: Implement streaming support in LangGraph
  */
 router.post('/stream', async (req: Request, res: Response) => {
-    const { message, walletAddress, conversationHistory, sessionId } = req.body as ChatRequest;
+    const { message, walletAddress, sessionId, agentId, taskId } = req.body as ChatRequest;
 
     // Validate
     if (!message) {
@@ -160,28 +124,29 @@ router.post('/stream', async (req: Request, res: Response) => {
     res.setHeader('Connection', 'keep-alive');
 
     try {
-        const validHistory = (conversationHistory || [])
-            .filter(msg => msg.role === 'user' || msg.role === 'assistant')
-            .slice(-20);
-
-        // Call Relay Agent
-        const response = await agentChat(
-            [...validHistory, { role: 'user', content: message }],
-            {
-                walletAddress,
-                sessionId: sessionId || 'default',
-            }
-        );
+        // Process through LangGraph (non-streaming for now)
+        const result = await processChat(message, {
+            walletAddress,
+            sessionId,
+            agentId,
+            taskId,
+        });
 
         // Send tool calls if any
-        if (response.toolCalls) {
+        if (result.toolCalls) {
             res.write(`event: tool_calls\n`);
-            res.write(`data: ${JSON.stringify(response.toolCalls)}\n\n`);
+            res.write(`data: ${JSON.stringify(result.toolCalls)}\n\n`);
         }
 
         // Send message
         res.write(`event: message\n`);
-        res.write(`data: ${JSON.stringify({ content: response.content })}\n\n`);
+        res.write(`data: ${JSON.stringify({ content: result.response })}\n\n`);
+
+        // Send approval actions if needed
+        if (result.requiresApproval && result.approvalActions) {
+            res.write(`event: approval_required\n`);
+            res.write(`data: ${JSON.stringify(result.approvalActions)}\n\n`);
+        }
 
         // Send done event
         res.write(`event: done\n`);

@@ -372,7 +372,7 @@ export function ServiceDiscovery() {
                         <Button
                             variant="outline"
                             className="justify-start h-auto py-4"
-                            onClick={() => navigate('/docs')}
+                            onClick={() => window.location.href = 'https://docs.relaycore.xyz'}
                         >
                             <BarChart3 className="h-5 w-5 mr-3 text-purple-600" />
                             <div className="text-left">

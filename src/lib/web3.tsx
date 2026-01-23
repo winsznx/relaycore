@@ -44,7 +44,7 @@ const cronosTestnet = defineChain({
         },
     },
     blockExplorers: {
-        default: { name: 'Cronos Explorer', url: 'https://explorer.cronos.org/testnet' },
+        default: { name: 'Cronos Testnet Explorer', url: 'https://explorer.cronos.org/testnet' },
     },
 })
 

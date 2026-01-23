@@ -105,16 +105,39 @@ export class IdentityService {
 
     /**
      * Verify identity ownership (requires signature)
+     * The signature must be a signed message of the socialId by the wallet
      */
-    async verify(socialId: string, _signature: string): Promise<boolean> {
-        // TODO: Implement signature verification
-        // For now, auto-verify
-        const { error } = await supabase
-            .from('identity_mappings')
-            .update({ verified: true, updated_at: new Date().toISOString() })
-            .eq('social_id', socialId.toLowerCase());
+    async verify(socialId: string, signature: string): Promise<boolean> {
+        // Get the identity mapping to retrieve the wallet address
+        const identity = await this.resolve(socialId);
+        if (!identity) {
+            return false;
+        }
 
-        return !error;
+        try {
+            // Import ethers dynamically to avoid circular deps
+            const { ethers } = await import('ethers');
+
+            // The user should sign a message containing their social ID
+            const message = `Verify identity: ${socialId.toLowerCase()}`;
+            const recoveredAddress = ethers.verifyMessage(message, signature);
+
+            // Check if recovered address matches stored wallet
+            if (recoveredAddress.toLowerCase() !== identity.walletAddress.toLowerCase()) {
+                return false;
+            }
+
+            // Update verification status
+            const { error } = await supabase
+                .from('identity_mappings')
+                .update({ verified: true, updated_at: new Date().toISOString() })
+                .eq('social_id', socialId.toLowerCase());
+
+            return !error;
+        } catch {
+            // Signature verification failed
+            return false;
+        }
     }
 
     /**

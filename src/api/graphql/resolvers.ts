@@ -423,6 +423,133 @@ export const resolvers = {
                 timestamp: prices.timestamp,
             };
         },
+
+        // Indexer queries
+        async serviceGraph() {
+            const { graphIndexer } = await import('../../services/indexer/graph-indexer.js');
+            return await graphIndexer.getServiceGraph();
+        },
+
+        async serviceDependencies(_: any, { serviceId }: { serviceId: string }) {
+            const { graphIndexer } = await import('../../services/indexer/graph-indexer.js');
+            return await graphIndexer.getServiceDependencies(serviceId);
+        },
+
+        async serviceDependents(_: any, { serviceId }: { serviceId: string }) {
+            const { graphIndexer } = await import('../../services/indexer/graph-indexer.js');
+            return await graphIndexer.getServiceDependents(serviceId);
+        },
+
+        // Perp indexer queries
+        async perpOpenPositions(_: any, { trader }: { trader?: string }) {
+            const { perpIndexer } = await import('../../services/indexer/perp-indexer.js');
+            return await perpIndexer.getOpenPositions(trader);
+        },
+
+        async perpRecentTrades(_: any, { pair, limit = 50 }: { pair?: string; limit?: number }) {
+            const { perpIndexer } = await import('../../services/indexer/perp-indexer.js');
+            return await perpIndexer.getRecentTrades(pair, limit);
+        },
+
+        async perpTraderStats(_: any, { trader }: { trader: string }) {
+            const { perpIndexer } = await import('../../services/indexer/perp-indexer.js');
+            return await perpIndexer.getTraderStats(trader);
+        },
+
+        // Task artifact queries
+        async task(_: any, { taskId }: { taskId: string }) {
+            const { data, error } = await supabase
+                .from('task_artifacts')
+                .select('*')
+                .eq('task_id', taskId)
+                .single();
+
+            if (error) {
+                if (error.code === 'PGRST116') return null;
+                throw new Error(error.message);
+            }
+
+            return {
+                taskId: data.task_id,
+                agentId: data.agent_id,
+                serviceId: data.service_id,
+                sessionId: data.session_id,
+                state: data.state,
+                paymentId: data.payment_id,
+                facilitatorTx: data.facilitator_tx,
+                retries: data.retries,
+                createdAt: data.created_at,
+                updatedAt: data.updated_at,
+                completedAt: data.completed_at,
+                inputs: data.inputs,
+                outputs: data.outputs,
+                error: data.error,
+                metrics: data.metrics,
+            };
+        },
+
+        async tasks(_: any, { agentId, serviceId, sessionId, state, limit = 100 }: any) {
+            let query = supabase.from('task_artifacts').select('*');
+
+            if (agentId) query = query.eq('agent_id', agentId);
+            if (serviceId) query = query.eq('service_id', serviceId);
+            if (sessionId) query = query.eq('session_id', sessionId);
+            if (state) query = query.eq('state', state);
+
+            query = query.order('created_at', { ascending: false }).limit(limit);
+
+            const { data, error } = await query;
+            if (error) throw new Error(error.message);
+
+            return data.map(d => ({
+                taskId: d.task_id,
+                agentId: d.agent_id,
+                serviceId: d.service_id,
+                sessionId: d.session_id,
+                state: d.state,
+                paymentId: d.payment_id,
+                facilitatorTx: d.facilitator_tx,
+                retries: d.retries,
+                createdAt: d.created_at,
+                updatedAt: d.updated_at,
+                completedAt: d.completed_at,
+                inputs: d.inputs,
+                outputs: d.outputs,
+                error: d.error,
+                metrics: d.metrics,
+            }));
+        },
+
+        async taskStats(_: any, { agentId }: { agentId?: string }) {
+            let query = supabase.from('task_artifacts').select('state, metrics');
+
+            if (agentId) query = query.eq('agent_id', agentId);
+
+            const { data, error } = await query;
+            if (error) throw new Error(error.message);
+
+            const total = data.length;
+            const pending = data.filter(d => d.state === 'pending').length;
+            const settled = data.filter(d => d.state === 'settled').length;
+            const failed = data.filter(d => d.state === 'failed').length;
+
+            const durations = data
+                .filter(d => d.metrics?.total_ms)
+                .map(d => d.metrics.total_ms);
+
+            const avgDurationMs = durations.length > 0
+                ? durations.reduce((a, b) => a + b, 0) / durations.length
+                : 0;
+
+            return {
+                total,
+                pending,
+                settled,
+                failed,
+                successRate: total > 0 ? settled / total : 0,
+                avgDurationMs: Math.round(avgDurationMs),
+            };
+        },
     },
 
     Mutation: {

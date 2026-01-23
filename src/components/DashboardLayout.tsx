@@ -30,6 +30,40 @@ export function DashboardLayout() {
     const { open } = useAppKit()
     const { address, isConnected, caipAddress } = useAppKitAccount()
     const [balanceDisplay, setBalanceDisplay] = useState<string | null>(null)
+    const [displayName, setDisplayName] = useState<string>('')
+
+    // Fetch user profile for display name
+    const fetchProfile = () => {
+        if (isConnected && address) {
+            fetch(`/api/user/profile?wallet=${address}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.displayName) {
+                        setDisplayName(data.displayName)
+                    } else {
+                        setDisplayName(address.slice(0, 6))
+                    }
+                })
+                .catch(() => {
+                    setDisplayName(address.slice(0, 6))
+                })
+        } else {
+            setDisplayName('')
+        }
+    }
+
+    useEffect(() => {
+        fetchProfile()
+    }, [isConnected, address])
+
+    // Listen for profile updates
+    useEffect(() => {
+        const handleProfileUpdate = () => {
+            fetchProfile()
+        }
+        window.addEventListener('profileUpdated', handleProfileUpdate)
+        return () => window.removeEventListener('profileUpdated', handleProfileUpdate)
+    }, [isConnected, address])
 
     // Fetch balance using Web3 provider when connected
     useEffect(() => {
@@ -119,12 +153,12 @@ export function DashboardLayout() {
                     )}>
                         <div className="flex items-center gap-3">
                             <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#FFD84D] to-[#FF8A4C] flex items-center justify-center text-[#111111] font-bold uppercase shrink-0">
-                                {isConnected && address ? 'T' : 'G'}
+                                {isConnected && address ? (displayName ? displayName[0] : 'T') : 'G'}
                             </div>
                             {!isSidebarCollapsed && (
                                 <div className="flex-1 overflow-hidden">
                                     <p className="text-sm font-medium text-white truncate">
-                                        {isConnected && address ? 'Tim' : 'Guest User'}
+                                        {isConnected && address ? (displayName || truncateAddress(address)) : 'Guest User'}
                                     </p>
                                     <p className="text-xs text-gray-500 truncate">
                                         {isConnected && address ? truncateAddress(address) : 'View Only'}
@@ -233,8 +267,8 @@ export function DashboardLayout() {
                     </div>
                 </div>
 
-                {/* Mobile Bottom Navigation (Icon Only) - As requested */}
-                <div className="md:hidden bg-white border-t border-gray-200 flex justify-around p-2 pb-safe shrink-0 z-30">
+                {/* Mobile Bottom Navigation (Icon Only) - Glass Effect */}
+                <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/70 backdrop-blur-xl border-t border-white/20 flex justify-around p-2 pb-safe shrink-0 z-30 shadow-[0_-4px_30px_rgba(0,0,0,0.1)]">
                     {NAV_ITEMS.slice(0, 5).map((item) => {
                         const isActive = location.pathname === item.path
                         return (
@@ -242,11 +276,13 @@ export function DashboardLayout() {
                                 key={item.path}
                                 onClick={() => navigate(item.path)}
                                 className={cn(
-                                    "flex flex-col items-center justify-center w-12 h-12 rounded-xl transition-all",
-                                    isActive ? "text-[#111111] bg-gray-100" : "text-gray-400"
+                                    "flex flex-col items-center justify-center w-12 h-12 rounded-2xl transition-all duration-200",
+                                    isActive
+                                        ? "text-[#111111] bg-white/80 shadow-lg backdrop-blur-sm"
+                                        : "text-gray-500 hover:text-[#111111] hover:bg-white/40"
                                 )}
                             >
-                                <item.icon size={24} strokeWidth={isActive ? 2.5 : 2} />
+                                <item.icon size={22} strokeWidth={isActive ? 2.5 : 1.8} />
                             </button>
                         )
                     })}

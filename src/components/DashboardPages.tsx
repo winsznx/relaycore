@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import {
     CheckCircle2, Clock, MoreHorizontal, Shield, Zap, Search,
     User, Lock, Bell, Loader2, TrendingUp, TrendingDown, AlertTriangle,
-    RefreshCw, ArrowUpRight, ArrowDownRight, Wallet, DollarSign
+    RefreshCw, ArrowUpRight, ArrowDownRight, Wallet, DollarSign, Copy
 } from 'lucide-react';
 import {
     SkeletonCard, SkeletonStats, SkeletonTable,
@@ -28,7 +28,7 @@ import {
 import {
     useUserTrades, useUserPayments, useServices, useDashboardStats,
     useExecuteTrade, useUserServices,
-    useUserPositions, useVenues
+    useUserPositions, useVenues, useUserSessionPayments, useUserRWATransactions
 } from '@/lib/hooks';
 import { useMarketPrices, useFullPriceData, type AggregatedPrice } from '@/hooks/usePrices';
 import type { TradeExecuteRequest } from '../types/api';
@@ -196,11 +196,14 @@ export function DashboardOverview() {
 // DASHBOARD TRADING
 // ============================================
 
+import { useActiveSessions } from '@/hooks/useActiveSessions';
+
 export function DashboardTrading() {
     const [pair, setPair] = useState('BTC-USD');
     const [side, setSide] = useState<'long' | 'short'>('long');
     const [amount, setAmount] = useState(1000);
     const [leverage, setLeverage] = useState(2);
+    const [selectedSessionId, setSelectedSessionId] = useState<string>('');
 
     // x402 Payment state
     const [quote, setQuote] = useState<any>(null);
@@ -217,6 +220,7 @@ export function DashboardTrading() {
     const { data: positions, isLoading: positionsLoading, refetch: refetchPositions } = useUserPositions(userAddress || null);
     const { data: venues } = useVenues();
     const { handlePayment, isProcessing: isPaymentProcessing } = useX402Payment();
+    const { data: activeSessions, refetch: refetchSessions } = useActiveSessions(userAddress);
 
     // Get current price for selected pair
     const currentPrice = useMemo(() => {
@@ -228,16 +232,21 @@ export function DashboardTrading() {
         return 0;
     }, [prices, pair]);
 
-    // Step 1: Get Quote (with x402 payment)
+    // Step 1: Get Quote (with x402 payment or session)
     const handleGetQuote = useCallback(async () => {
         setIsGettingQuote(true);
         setQuote(null);
         setPaymentRequired(false);
 
         try {
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (selectedSessionId) {
+                headers['X-Session-Id'] = selectedSessionId;
+            }
+
             const response = await fetch('/api/perpai/quote', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify({
                     pair: pair.replace('-', '-PERP'),
                     side,
@@ -262,12 +271,15 @@ export function DashboardTrading() {
             const quoteData = await response.json();
             setQuote(quoteData.quote);
             toast.success('Quote Ready', 'Quote fetched successfully');
+            if (selectedSessionId) {
+                refetchSessions(); // Refresh session balance
+            }
         } catch (err: any) {
             toast.error('Quote Failed', err.message);
         } finally {
             setIsGettingQuote(false);
         }
-    }, [pair, side, leverage, amount]);
+    }, [pair, side, leverage, amount, selectedSessionId, refetchSessions]);
 
     // Handle x402 payment
     const handlePayAndRetry = useCallback(async () => {
@@ -376,6 +388,36 @@ export function DashboardTrading() {
 
             <Card className="border-0 shadow-sm ring-1 ring-gray-100">
                 <CardContent className="p-6 space-y-6">
+                    {/* Session Selector */}
+                    {isConnected && activeSessions && activeSessions.length > 0 && (
+                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 space-y-3">
+                            <div className="flex items-center gap-2">
+                                <Shield className="h-5 w-5 text-orange-600" />
+                                <span className="font-semibold text-orange-900">Pay from x402 Session</span>
+                            </div>
+                            <select
+                                className="w-full h-10 px-3 rounded-md border border-orange-300 bg-white focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                                value={selectedSessionId}
+                                onChange={(e) => setSelectedSessionId(e.target.value)}
+                            >
+                                <option value="">Pay directly (0.01 USDC)</option>
+                                {activeSessions.map((session) => {
+                                    const remaining = parseFloat(session.max_spend) - parseFloat(session.spent || '0');
+                                    return (
+                                        <option key={session.session_id} value={session.session_id}>
+                                            Session #{session.session_id.slice(-8)} - ${remaining.toFixed(2)} remaining
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                            {selectedSessionId && (
+                                <p className="text-sm text-orange-700">
+                                    Quote will be paid from your session budget (no wallet signature needed)
+                                </p>
+                            )}
+                        </div>
+                    )}
+
                     {/* Pair & Side */}
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
@@ -862,13 +904,15 @@ export function DashboardTransactions() {
     const { address, isConnected } = useAppKitAccount();
     const { data: trades, isLoading: tradesLoading, error: tradesError, refetch: refetchTrades } = useUserTrades(address || null);
     const { data: payments, isLoading: paymentsLoading, error: paymentsError, refetch: refetchPayments } = useUserPayments(address || null);
+    const { data: sessionPayments, isLoading: sessionPaymentsLoading, error: sessionPaymentsError, refetch: refetchSessionPayments } = useUserSessionPayments(address || null);
+    const { data: rwaTransactions, isLoading: rwaLoading, error: rwaError, refetch: refetchRWA } = useUserRWATransactions(address || null);
 
-    // Combine and sort transactions
     const allTransactions = useMemo(() => {
         const tradesList = trades || [];
         const paymentsList = payments || [];
+        const sessionPaymentsList = sessionPayments || [];
+        const rwaList = rwaTransactions || [];
 
-        // Transform payments to have a consistent structure
         const transformedPayments = paymentsList.map((p: any) => ({
             id: p.id,
             type: 'payment',
@@ -884,7 +928,6 @@ export function DashboardTransactions() {
             created_at: p.created_at,
         }));
 
-        // Transform trades to have a consistent structure
         const transformedTrades = tradesList.map((t: any) => ({
             id: t.id,
             type: 'trade',
@@ -899,18 +942,46 @@ export function DashboardTransactions() {
             created_at: t.created_at,
         }));
 
-        // Combine and sort by timestamp (newest first)
-        return [...transformedPayments, ...transformedTrades].sort((a, b) =>
+        const transformedSessionPayments = sessionPaymentsList.map((sp: any) => ({
+            id: sp.id,
+            type: 'session_payment',
+            agent_name: sp.agent_name,
+            agent_address: sp.agent_address,
+            amount: sp.amount,
+            payment_method: sp.payment_method,
+            metadata: sp.metadata,
+            status: 'completed',
+            timestamp: sp.created_at,
+            created_at: sp.created_at,
+        }));
+
+        const transformedRWA = rwaList.map((rwa: any) => ({
+            id: rwa.id,
+            type: 'rwa_transition',
+            rwa_id: rwa.rwa_id,
+            from_state: rwa.from_state,
+            to_state: rwa.to_state,
+            agent_address: rwa.agent_address,
+            agent_role: rwa.agent_role,
+            payment_hash: rwa.payment_hash,
+            status: 'completed',
+            timestamp: rwa.transitioned_at,
+            created_at: rwa.transitioned_at,
+        }));
+
+        return [...transformedPayments, ...transformedTrades, ...transformedSessionPayments, ...transformedRWA].sort((a, b) =>
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
         );
-    }, [trades, payments]);
+    }, [trades, payments, sessionPayments, rwaTransactions]);
 
-    const isLoading = tradesLoading || paymentsLoading;
-    const error = tradesError || paymentsError;
+    const isLoading = tradesLoading || paymentsLoading || sessionPaymentsLoading || rwaLoading;
+    const error = tradesError || paymentsError || sessionPaymentsError || rwaError;
 
     const refetch = () => {
         refetchTrades();
         refetchPayments();
+        refetchSessionPayments();
+        refetchRWA();
     };
 
     // Show connect wallet prompt if not connected
@@ -1156,7 +1227,7 @@ export function DashboardSettings() {
     const [notifyDailySummary, setNotifyDailySummary] = useState(false);
 
     // API Keys
-    const [apiKeys, setApiKeys] = useState<Array<{ id: string; name: string; created: string; lastUsed: string }>>([]);
+    const [apiKeys, setApiKeys] = useState<Array<{ id: string; name: string; key?: string; created: string; lastUsed: string }>>([]);
     const [generatingKey, setGeneratingKey] = useState(false);
 
     // Bot Linking (summary only - full functionality on /dashboard/settings/bot)
@@ -1225,6 +1296,7 @@ export function DashboardSettings() {
                 toast.success('Profile updated', 'Your profile has been saved.');
                 setEditingProfile(false);
                 await loadProfile();
+                window.dispatchEvent(new Event('profileUpdated'));
             } else {
                 throw new Error('Failed to save');
             }
@@ -1286,11 +1358,12 @@ export function DashboardSettings() {
             if (response.ok) {
                 toast.success(
                     'API Key Generated',
-                    `Your new key: ${data.key}\n\nCopy it now - you won't see it again!`
+                    `Your new key has been created. Copy it now - you won't see it again!`
                 );
                 setApiKeys([{
                     id: data.id,
                     name: data.name,
+                    key: data.key,
                     created: data.created_at,
                     lastUsed: 'Never',
                 }]);
@@ -1305,14 +1378,22 @@ export function DashboardSettings() {
     };
 
     const handleRevokeApiKey = async (keyId: string) => {
+        if (!address) return;
         try {
             const response = await fetch(`/api/user/api-keys/${keyId}`, {
                 method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    walletAddress: address,
+                }),
             });
 
             if (response.ok) {
                 setApiKeys(prev => prev.filter(k => k.id !== keyId));
                 toast.success('API Key revoked', 'The key has been permanently disabled.');
+            } else {
+                const data = await response.json();
+                toast.error('Revoke failed', data.error || 'Please try again.');
             }
         } catch (error) {
             toast.error('Revoke failed', 'Please try again.');
@@ -1550,25 +1631,45 @@ export function DashboardSettings() {
 
                     {apiKeys.length > 0 ? (
                         <div className="space-y-3">
-                            {apiKeys.map((key) => (
+                            {apiKeys.map((apiKey) => (
                                 <div
-                                    key={key.id}
-                                    className="flex items-center justify-between p-4 rounded-lg bg-white border border-gray-100"
+                                    key={apiKey.id}
+                                    className="space-y-2 p-4 rounded-lg bg-white border border-gray-100"
                                 >
-                                    <div>
-                                        <p className="font-medium text-gray-900">{key.name}</p>
-                                        <p className="text-xs text-gray-500">
-                                            Created {new Date(key.created).toLocaleDateString()} • Last used: {key.lastUsed}
-                                        </p>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="font-medium text-gray-900">{apiKey.name}</p>
+                                            <p className="text-xs text-gray-500">
+                                                Created {new Date(apiKey.created).toLocaleDateString()} • Last used: {apiKey.lastUsed}
+                                            </p>
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleRevokeApiKey(apiKey.id)}
+                                            className="text-red-600 border-red-200 hover:bg-red-50"
+                                        >
+                                            Revoke
+                                        </Button>
                                     </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => handleRevokeApiKey(key.id)}
-                                        className="text-red-600 border-red-200 hover:bg-red-50"
-                                    >
-                                        Revoke
-                                    </Button>
+                                    {apiKey.key && (
+                                        <div className="flex items-center gap-2 p-3 bg-gray-50 rounded border border-gray-200">
+                                            <code className="flex-1 text-sm font-mono text-gray-700 break-all">
+                                                {apiKey.key}
+                                            </code>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(apiKey.key!);
+                                                    toast.success('Copied!', 'API key copied to clipboard');
+                                                }}
+                                                className="flex-shrink-0"
+                                            >
+                                                <Copy className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -1862,18 +1963,21 @@ function TradeRow({ trade }: { trade: any }) {
 
 function TransactionRow({ trade }: { trade: any }) {
     const isPayment = trade.type === 'payment';
-    const isSuccess = trade.status === 'closed' || trade.status === 'open' || trade.status === 'settled' || trade.status === 'success';
+    const isSessionPayment = trade.type === 'session_payment';
+    const isRWA = trade.type === 'rwa_transition';
+    const isSuccess = trade.status === 'closed' || trade.status === 'open' || trade.status === 'settled' || trade.status === 'success' || trade.status === 'completed';
 
-    // Format payment amount (USDC has 6 decimals)
     const formattedAmount = isPayment
         ? (parseFloat(trade.amount) / 1e6).toFixed(2)
-        : trade.size_usd;
+        : isSessionPayment
+            ? parseFloat(trade.amount).toFixed(2)
+            : isRWA
+                ? '0.00'
+                : trade.size_usd;
 
-    // Get transaction hash
-    const txHash = trade.tx_hash || trade.tx_hash_open || trade.tx_hash_close;
+    const txHash = trade.tx_hash || trade.tx_hash_open || trade.tx_hash_close || trade.payment_hash;
 
-    // Cronos testnet explorer URL
-    const explorerUrl = txHash
+    const explorerUrl = txHash && !isSessionPayment && !isRWA
         ? `https://explorer.cronos.org/testnet/tx/${txHash}`
         : null;
 
@@ -1881,6 +1985,55 @@ function TransactionRow({ trade }: { trade: any }) {
         if (explorerUrl) {
             window.open(explorerUrl, '_blank', 'noopener,noreferrer');
         }
+    };
+
+    const getTitle = () => {
+        if (isSessionPayment) {
+            return trade.agent_name || 'Session Payment';
+        }
+        if (isRWA) {
+            return `RWA: ${trade.from_state} → ${trade.to_state}`;
+        }
+        if (isPayment) {
+            return trade.resource_url?.includes('perpai') ? 'PerpAI Quote' : 'Payment';
+        }
+        return `${trade.side.toUpperCase()} ${trade.pair}`;
+    };
+
+    const getSubtitle = () => {
+        if (isSessionPayment) {
+            return `${trade.payment_method} • ${trade.agent_address?.slice(0, 10)}...`;
+        }
+        if (isRWA) {
+            return `${trade.agent_role} • ${trade.rwa_id?.slice(0, 15)}...`;
+        }
+        if (txHash) {
+            return `${txHash.slice(0, 10)}...`;
+        }
+        return 'No hash';
+    };
+
+    const getAmount = () => {
+        if (isSessionPayment || isRWA) {
+            return `${formattedAmount} USDC`;
+        }
+        if (isPayment) {
+            return `${formattedAmount} USDC`;
+        }
+        return `$${trade.size_usd}`;
+    };
+
+    const getDetails = () => {
+        if (isSessionPayment) {
+            return trade.metadata?.rwaId ? `RWA: ${trade.metadata.rwaId}` : 'Agent Service';
+        }
+        if (isRWA) {
+            return trade.agent_address?.slice(0, 10) + '...';
+        }
+        if (isPayment) {
+            return trade.to_address?.slice(0, 10) + '...';
+        }
+        return trade.dex_venues?.name || 'Unknown venue';
     };
 
     return (
@@ -1904,17 +2057,13 @@ function TransactionRow({ trade }: { trade: any }) {
                 </div>
                 <div>
                     <p className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                        {isPayment ? (
-                            <span className="flex items-center gap-2">
-                                <DollarSign className="h-4 w-4" />
-                                {trade.resource_url?.includes('perpai') ? 'PerpAI Quote' : 'Payment'}
-                            </span>
-                        ) : (
-                            `${trade.side.toUpperCase()} ${trade.pair}`
-                        )}
+                        <span className="flex items-center gap-2">
+                            {(isPayment || isSessionPayment || isRWA) && <DollarSign className="h-4 w-4" />}
+                            {getTitle()}
+                        </span>
                     </p>
                     <p className="text-xs text-gray-500 flex items-center gap-1">
-                        {txHash?.slice(0, 10)}...
+                        {getSubtitle()}
                         {explorerUrl && <ArrowUpRight className="h-3 w-3" />}
                         <span className="mx-1">•</span>
                         {new Date(trade.created_at).toLocaleString()}
@@ -1923,10 +2072,10 @@ function TransactionRow({ trade }: { trade: any }) {
             </div>
             <div className="text-right">
                 <p className="font-mono font-bold text-gray-900 dark:text-gray-100">
-                    {isPayment ? `${formattedAmount} USDC` : `$${trade.size_usd}`}
+                    {getAmount()}
                 </p>
                 <p className="text-xs text-gray-400">
-                    {isPayment ? trade.to_address?.slice(0, 10) + '...' : (trade.dex_venues?.name || 'Unknown venue')}
+                    {getDetails()}
                 </p>
             </div>
         </div>
@@ -2049,3 +2198,6 @@ function TradeResult({ result, error }: { result: any; error: any }) {
         </div>
     );
 }
+
+// Export DashboardRWA from separate file
+export { DashboardRWA } from './DashboardRWA';

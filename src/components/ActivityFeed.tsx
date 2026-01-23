@@ -4,7 +4,6 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabase';
 import {
     ArrowUpRight,
-    ArrowDownRight,
     DollarSign,
     Star,
     Activity,
@@ -274,9 +273,16 @@ function formatAddress(address: string): string {
 
 function formatAmount(amount: string | number): string {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount;
-    if (num >= 1000000) return `$${(num / 1000000).toFixed(2)}M`;
-    if (num >= 1000) return `$${(num / 1000).toFixed(2)}K`;
-    return `$${num.toFixed(2)}`;
+
+    if (isNaN(num)) return '0.00 USDC';
+
+    // Convert from smallest unit (USDC has 6 decimals)
+    const usdcAmount = num / 1e6;
+
+    if (usdcAmount >= 1000000) return `${(usdcAmount / 1000000).toFixed(2)}M USDC`;
+    if (usdcAmount >= 1000) return `${(usdcAmount / 1000).toFixed(2)}K USDC`;
+
+    return `${usdcAmount.toFixed(2)} USDC`;
 }
 
 function formatTimestamp(timestamp: string): string {

@@ -1,4 +1,10 @@
 import { Facilitator, type PaymentRequirements, CronosNetwork } from '@crypto.com/facilitator-client';
+import logger from '../../lib/logger.js';
+
+// Ensure WALLET_PRIVATE_KEY is set for Facilitator SDK (uses RELAY_PRIVATE_KEY if available)
+if (!process.env.WALLET_PRIVATE_KEY && process.env.RELAY_PRIVATE_KEY) {
+    process.env.WALLET_PRIVATE_KEY = process.env.RELAY_PRIVATE_KEY;
+}
 
 const NETWORK = (process.env.VITE_CRONOS_NETWORK ?? 'cronos-testnet') as CronosNetwork;
 
@@ -10,7 +16,7 @@ export class FacilitatorService {
 
     constructor() {
         this.facilitator = new Facilitator({ network: NETWORK });
-        console.log(`Facilitator initialized on ${NETWORK}`);
+        logger.info('Facilitator initialized', { network: NETWORK });
     }
 
     /**
@@ -24,7 +30,7 @@ export class FacilitatorService {
         paymentRequirements: PaymentRequirements;
     }) {
         try {
-            console.log(`Verifying payment...`);
+            logger.debug('Verifying payment');
 
             // Build the verify request
             const verifyRequest = this.facilitator.buildVerifyRequest(
@@ -39,13 +45,13 @@ export class FacilitatorService {
                 throw new Error('Payment verification failed: Invalid signature or parameters');
             }
 
-            console.log(`Payment verified`);
+            logger.debug('Payment verified');
 
             // Step 2: Settle the payment on-chain
-            console.log(`Settling payment on Cronos...`);
+            logger.debug('Settling payment on Cronos');
             const settleResult = await this.facilitator.settlePayment(verifyRequest);
 
-            console.log(`Payment settled: ${settleResult.txHash}`);
+            logger.info('Payment settled', { txHash: settleResult.txHash });
 
             return {
                 success: true,
@@ -53,7 +59,7 @@ export class FacilitatorService {
                 timestamp: Date.now(),
             };
         } catch (error) {
-            console.error('Payment settlement error:', error);
+            logger.error('Payment settlement error', error as Error);
             throw error;
         }
     }

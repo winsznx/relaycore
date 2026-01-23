@@ -17,6 +17,7 @@ import cronosLogo from '@/assets/partners/cronos.svg'
 import cryptoComLogo from '@/assets/partners/crypto-com.svg'
 import zauthLogo from '@/assets/partners/zauth.png'
 import { cn } from '@/lib/utils'
+import { formatUSDCWithLabel } from '@/lib/formatters'
 import Globe from '@/components/Globe'
 import DotGrid from '@/components/DotGrid'
 import { DashboardLayout } from '@/components/DashboardLayout'
@@ -35,6 +36,7 @@ import DocsEIP3009Guide from '@/pages/docs/guides/EIP3009Guide';
 import DocsERC8004Guide from '@/pages/docs/guides/ERC8004Guide';
 import DocsClaudeGuide from '@/pages/docs/guides/ClaudeGuide';
 import DocsACPSGuide from '@/pages/docs/guides/ACPSGuide';
+import DocsRWAGuide from '@/pages/docs/guides/RWAGuide';
 import DocsRESTAPI from '@/pages/docs/api/RESTAPI';
 import DocsGraphQLAPI from '@/pages/docs/api/GraphQLAPI';
 import DocsWebSocketAPI from '@/pages/docs/api/WebSocketAPI';
@@ -60,11 +62,13 @@ function Navbar({ onOpenMenu }: { onOpenMenu: () => void }) {
     { label: 'Primitives', href: '#primitives' },
     { label: 'Protocol Flow', href: '#protocol-flow' },
     { label: 'Intelligence', href: '#intelligence' },
-    { label: 'Docs', href: '/docs' },
+    { label: 'Docs', href: 'https://docs.relaycore.xyz' },
   ]
 
   const handleNavClick = (href: string) => {
-    if (href.startsWith('/')) {
+    if (href.startsWith('http')) {
+      window.location.href = href;
+    } else if (href.startsWith('/')) {
       // Navigate to route
       navigate(href);
     } else if (href.startsWith('#')) {
@@ -173,7 +177,7 @@ function HeroSection() {
             Agent-initiated payments. On-chain settlement. Real-time indexed intelligence. A public MCP-compatible backend for autonomous execution on Cronos.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mb-12">
-            <Button size="lg" className="h-16 px-10 rounded-full bg-[#111111] text-white hover:bg-black text-lg font-semibold shadow-xl shadow-black/10 w-full sm:w-auto" onClick={() => navigate('/docs')}>
+            <Button size="lg" className="h-16 px-10 rounded-full bg-[#111111] text-white hover:bg-black text-lg font-semibold shadow-xl shadow-black/10 w-full sm:w-auto" onClick={() => window.location.href = 'https://docs.relaycore.xyz'}>
               Documentation
             </Button>
             <Button size="lg" variant="outline" className="h-16 px-10 rounded-full border-gray-200 text-[#111111] hover:bg-gray-50 text-lg font-semibold w-full sm:w-auto bg-white shadow-sm" onClick={() => navigate('/playground')}>
@@ -491,7 +495,7 @@ function FlowDiagram({ step }: { step: number }) {
               >
                 <span className="text-gray-400">{tx.hash}</span>
                 <div className="flex items-center gap-3">
-                  <span className="text-white">{tx.amount} USDC</span>
+                  <span className="text-white">{formatUSDCWithLabel(tx.amount)}</span>
                   {tx.status === 'indexed' ? (
                     <CheckCircle2 className="w-4 h-4 text-[#00FF88]" />
                   ) : (
@@ -1105,6 +1109,7 @@ export default function App() {
       <Route path="/docs/guides/eip3009" element={<DocsLayout><DocsEIP3009Guide /></DocsLayout>} />
       <Route path="/docs/guides/erc8004" element={<DocsLayout><DocsERC8004Guide /></DocsLayout>} />
       <Route path="/docs/guides/claude" element={<DocsLayout><DocsClaudeGuide /></DocsLayout>} />
+      <Route path="/docs/guides/rwa" element={<DocsLayout><DocsRWAGuide /></DocsLayout>} />
       <Route path="/docs/guides/acps" element={<DocsLayout><DocsACPSGuide /></DocsLayout>} />
       <Route path="/docs/api/rest" element={<DocsLayout><DocsRESTAPI /></DocsLayout>} />
       <Route path="/docs/api/graphql" element={<DocsLayout><DocsGraphQLAPI /></DocsLayout>} />

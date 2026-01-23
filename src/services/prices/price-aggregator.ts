@@ -414,19 +414,17 @@ export class MultiDexAggregator {
 
     /**
      * Query Moonlander Perpetual DEX.
-     * Uses Pyth oracle prices internally.
+     * Returns price only from actual Moonlander contract.
+     * Does NOT fallback to Pyth to avoid mislabeling.
      */
     private async queryMoonlander(symbol: PriceFeedSymbol): Promise<PriceSource | null> {
         const start = performance.now();
 
         try {
-            // Dynamic import to avoid circular dependencies
             const { moonlanderIntegration } = await import('../../lib/blockchain/moonlander');
 
-            // Convert symbol format (BTC/USD -> BTC-USD)
             const pair = symbol.replace('/', '-');
 
-            // Try to get price from Moonlander contract (may fail on Diamond Proxy)
             const price = await moonlanderIntegration.getTokenPrice(pair, true);
 
             if (price > 0) {
@@ -438,21 +436,8 @@ export class MultiDexAggregator {
                 };
             }
 
-            // Moonlander uses Pyth/Cronos oracles internally (per their docs)
-            // So Pyth price = Moonlander execution price
-            const pythPrice = await pythPriceService.getPrice(symbol);
-            if (pythPrice > 0) {
-                return {
-                    name: 'Moonlander',
-                    price: pythPrice,
-                    latencyMs: Math.round(performance.now() - start),
-                    timestamp: Date.now(),
-                };
-            }
-
             return null;
-        } catch (error) {
-            // Silent fail - Moonlander prices come from Pyth anyway
+        } catch {
             return null;
         }
     }

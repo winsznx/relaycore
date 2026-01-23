@@ -213,6 +213,27 @@ export const typeDefs = `#graphql
     # Live prices from multi-DEX aggregator
     livePrices(symbols: [String!]): [LivePrice!]!
     currentPrices: CurrentPrices!
+    
+    # Indexer queries
+    serviceGraph: ServiceGraph!
+    serviceDependencies(serviceId: String!): [String!]!
+    serviceDependents(serviceId: String!): [String!]!
+    
+    # Perp indexer queries
+    perpOpenPositions(trader: String): [PerpPosition!]!
+    perpRecentTrades(pair: String, limit: Int = 50): [PerpTrade!]!
+    perpTraderStats(trader: String!): TraderStats!
+    
+    # Task artifact queries
+    task(taskId: String!): TaskArtifact
+    tasks(
+      agentId: String
+      serviceId: String
+      sessionId: String
+      state: String
+      limit: Int = 100
+    ): [TaskArtifact!]!
+    taskStats(agentId: String): TaskStats!
   }
 
   type LivePrice {
@@ -254,6 +275,83 @@ export const typeDefs = `#graphql
     latencyMs: Int
     evidence: JSON
     createdAt: DateTime!
+  }
+
+  # Indexer Data Types
+  type ServiceNode {
+    id: String!
+    name: String!
+    type: String!
+    owner: String!
+  }
+
+  type ServiceEdge {
+    from: String!
+    to: String!
+    weight: Float!
+  }
+
+  type ServiceGraph {
+    nodes: [ServiceNode!]!
+    edges: [ServiceEdge!]!
+  }
+
+  type PerpPosition {
+    id: String!
+    trader: String!
+    pair: String!
+    isLong: Boolean!
+    size: String!
+    collateral: String!
+    entryPrice: String!
+    liquidationPrice: String!
+    pnl: String!
+    openedAt: DateTime!
+  }
+
+  type PerpTrade {
+    id: String!
+    trader: String!
+    pair: String!
+    isLong: Boolean!
+    size: String!
+    price: String!
+    fee: String!
+    timestamp: DateTime!
+  }
+
+  type TraderStats {
+    totalTrades: Int!
+    totalVolume: String!
+    totalPnl: String!
+    winRate: Float!
+  }
+
+  type TaskArtifact {
+    taskId: String!
+    agentId: String!
+    serviceId: String
+    sessionId: String
+    state: String!
+    paymentId: String
+    facilitatorTx: String
+    retries: Int!
+    createdAt: DateTime!
+    updatedAt: DateTime!
+    completedAt: DateTime
+    inputs: JSON!
+    outputs: JSON!
+    error: JSON
+    metrics: JSON
+  }
+
+  type TaskStats {
+    total: Int!
+    pending: Int!
+    settled: Int!
+    failed: Int!
+    successRate: Float!
+    avgDurationMs: Float!
   }
 
   type Mutation {

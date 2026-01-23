@@ -17,129 +17,22 @@ import {
     CheckCircle2
 } from 'lucide-react';
 import { Logo } from '@/components/Logo';
+import type {
+    LatestBlock,
+    SessionRecord,
+    TransactionRecord,
+    AgentRecord,
+    PaymentRecord,
+    SessionDetail,
+    HealthStatus,
+    HealthCheck,
+    SystemMetrics,
+    Trace,
+    AlertRecord,
+    RWARecord
+} from '@/types/dashboard';
 
-interface LatestBlock {
-    blockNumber: number;
-    timestamp: Date | string;
-    txCount: number;
-    gasUsed: string;
-}
-
-interface SessionRecord {
-    sessionId: string;
-    owner: string;
-    totalDeposited: string;
-    totalSpent: string;
-    state: 'active' | 'closed' | 'refunded';
-    agentCount: number;
-    createdAt: Date | string;
-    lastActivity: Date | string;
-}
-
-interface TransactionRecord {
-    txHash: string;
-    type: 'deposit' | 'release' | 'refund' | 'authorize' | 'revoke';
-    from: string;
-    to: string;
-    value: string;
-    status: 'success' | 'pending' | 'failed';
-    timestamp: Date | string;
-    blockNumber: number;
-}
-
-interface AgentRecord {
-    agentId: string;
-    name: string;
-    owner: string;
-    sessionsActive: number;
-    totalEarned: string;
-    successRate: number;
-    lastActive: Date | string;
-}
-
-interface PaymentRecord {
-    paymentId: string;
-    from: string;
-    to: string;
-    amount: string;
-    status: 'pending' | 'settled' | 'failed';
-    timestamp: Date | string;
-    txHash?: string;
-    resourceUrl?: string;
-    tokenAddress?: string;
-}
-
-interface SessionDetail {
-    sessionId: string;
-    owner: string;
-    totalDeposited: string;
-    totalSpent: string;
-    state: 'active' | 'closed' | 'refunded';
-    createdAt: Date | string;
-    lastActivity: Date | string;
-    events: Array<{
-        id: string;
-        type: string;
-        txHash: string;
-        timestamp: Date | string;
-        data: any;
-    }>;
-    agents: Array<{
-        agentId: string;
-        isAuthorized: boolean;
-        totalSpend: string;
-        authorizedAt: Date | string;
-    }>;
-}
-
-interface HealthStatus {
-    status: 'healthy' | 'degraded' | 'unhealthy';
-    timestamp: string;
-    checks: HealthCheck[];
-    version: string;
-    uptime: number;
-}
-
-interface HealthCheck {
-    name: string;
-    status: 'pass' | 'fail' | 'warn';
-    latencyMs: number;
-    message?: string;
-    lastChecked: string;
-}
-
-interface SystemMetrics {
-    requestsTotal: number;
-    requestsSuccessful?: number;
-    requestsSuccess?: number;
-    requestsFailed: number;
-    averageLatencyMs?: number;
-    avgLatencyMs?: number;
-    memoryUsageMb: number;
-    requestsPerMinute?: number[];
-    activeConnections?: number;
-    cpuPercent?: number;
-    uptime?: number;
-}
-
-interface Trace {
-    traceId: string;
-    method: string;
-    path: string;
-    statusCode: number;
-    durationMs: number;
-    timestamp: string;
-}
-
-interface AlertRecord {
-    id: string;
-    level: 'info' | 'warning' | 'error' | 'critical';
-    message: string;
-    timestamp: string;
-    resolved: boolean;
-}
-
-type TabId = 'sessions' | 'transactions' | 'agents' | 'payments' | 'system';
+type TabId = 'sessions' | 'transactions' | 'agents' | 'payments' | 'rwas' | 'system';
 
 function StatusBadge({ status }: { status: string }) {
     const styles: Record<string, string> = {
@@ -148,8 +41,17 @@ function StatusBadge({ status }: { status: string }) {
         pending: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
         failed: 'bg-red-500/10 text-red-600 border-red-500/20',
         closed: 'bg-gray-500/10 text-gray-600 border-gray-500/20',
-        refunded: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
-        settled: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+        refunded: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+        settled: 'bg-green-500/10 text-green-600 border-green-500/20',
+        pass: 'bg-green-500/10 text-green-600 border-green-500/20',
+        fail: 'bg-red-500/10 text-red-600 border-red-500/20',
+        warn: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
+        created: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+        verified: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
+        escrowed: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20',
+        in_process: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
+        fulfilled: 'bg-green-500/10 text-green-600 border-green-500/20',
+        disputed: 'bg-red-500/10 text-red-600 border-red-500/20',
     };
 
     return (
@@ -213,14 +115,17 @@ export function Explorer() {
     const [sysMetrics, setSysMetrics] = useState<SystemMetrics | null>(null);
     const [traces, setTraces] = useState<Trace[]>([]);
     const [alerts, setAlerts] = useState<AlertRecord[]>([]);
+    const [indexers, setIndexers] = useState<{ name: string; schedule: string; lastBlock: number; lastRun: string | null; status: string }[]>([]);
+    const [connections, setConnections] = useState<{ name: string; status: string; latestBlock?: number; latencyMs?: number; error?: string }[]>([]);
 
     const [latestBlock, setLatestBlock] = useState<LatestBlock | null>(null);
     const [sessions, setSessions] = useState<SessionRecord[]>([]);
     const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
     const [agents, setAgents] = useState<AgentRecord[]>([]);
+    const [payments, setPayments] = useState<PaymentRecord[]>([]);
+    const [rwas, setRwas] = useState<RWARecord[]>([]);
     const [selectedPayment, setSelectedPayment] = useState<PaymentRecord | null>(null);
     const [paymentDetailLoading, setPaymentDetailLoading] = useState(false);
-    const [payments, setPayments] = useState<PaymentRecord[]>([]);
 
     const [searchResults, setSearchResults] = useState<any>(null);
     const [isSearching, setIsSearching] = useState(false);
@@ -278,18 +183,23 @@ export function Explorer() {
 
     const fetchSystemData = async () => {
         try {
-            const [healthRes, metricsRes, tracesRes, alertsRes] = await Promise.allSettled([
+            const [healthRes, metricsRes, tracesRes, alertsRes, indexersRes, connectionsRes] = await Promise.allSettled([
                 fetch('/api/observability/health'),
                 fetch('/api/observability/metrics/json'),
                 fetch('/api/observability/traces?limit=10'),
-                fetch('/api/observability/alerts?limit=10')
+                fetch('/api/observability/alerts?limit=10'),
+                fetch('/api/observability/indexers'),
+                fetch('/api/observability/connections')
             ]);
 
             if (healthRes.status === 'fulfilled' && healthRes.value.ok) {
                 setHealth(await healthRes.value.json());
             }
             if (metricsRes.status === 'fulfilled' && metricsRes.value.ok) {
-                setSysMetrics(await metricsRes.value.json());
+                const metricsData = await metricsRes.value.json();
+                // API returns { system: {...}, histograms: {...}, counters: {...} }
+                // Extract the system object for display
+                setSysMetrics(metricsData.system || metricsData);
             }
             if (tracesRes.status === 'fulfilled' && tracesRes.value.ok) {
                 const tracesData = await tracesRes.value.json();
@@ -298,6 +208,14 @@ export function Explorer() {
             if (alertsRes.status === 'fulfilled' && alertsRes.value.ok) {
                 const alertsData = await alertsRes.value.json();
                 setAlerts(alertsData.alerts || []);
+            }
+            if (indexersRes.status === 'fulfilled' && indexersRes.value.ok) {
+                const indexersData = await indexersRes.value.json();
+                setIndexers(indexersData.indexers || []);
+            }
+            if (connectionsRes.status === 'fulfilled' && connectionsRes.value.ok) {
+                const connectionsData = await connectionsRes.value.json();
+                setConnections(connectionsData.connections || []);
             }
         } catch (error) {
             console.error('Failed to fetch system data:', error);
@@ -312,19 +230,45 @@ export function Explorer() {
         if (sessionId) {
             setSessionDetailLoading(true);
             fetch(`/api/explorer/sessions/${sessionId}`)
-                .then(res => res.json())
+                .then(res => {
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    return res.json();
+                })
                 .then(data => {
-                    setSessionDetail(data.session);
+                    if (data.error) {
+                        console.error('Session not found:', data.error);
+                        navigate('/explorer');
+                        return;
+                    }
+                    // Ensure arrays are always defined to prevent crashes
+                    const session = data.session || {};
+                    setSessionDetail({
+                        sessionId: session.sessionId || sessionId,
+                        owner: session.owner || '',
+                        totalDeposited: session.totalDeposited || '0',
+                        totalSpent: session.totalSpent || '0',
+                        maxSpend: session.maxSpend || '0',
+                        remaining: session.remaining || '0',
+                        state: session.state || 'pending',
+                        createdAt: session.createdAt || new Date(),
+                        expiresAt: session.expiresAt,
+                        closedAt: session.closedAt,
+                        depositTxHash: session.depositTxHash,
+                        events: session.events || [],
+                        agents: session.agents || [],
+                        paymentCount: session.paymentCount || 0
+                    });
                     setSessionDetailLoading(false);
                 })
                 .catch(error => {
                     console.error('Failed to fetch session detail:', error);
                     setSessionDetailLoading(false);
+                    navigate('/explorer');
                 });
         } else {
             setSessionDetail(null);
         }
-    }, [sessionId]);
+    }, [sessionId, navigate]);
 
     useEffect(() => {
         if (activeTab === 'system') {
@@ -699,7 +643,12 @@ export function Explorer() {
                         <div className="flex items-center gap-3">
                             <Logo className="h-7 w-7" />
                             <div>
-                                <h1 className="text-2xl font-bold text-gray-900">Relay Explorer</h1>
+                                <div className="flex items-center gap-2">
+                                    <h1 className="text-2xl font-bold text-gray-900">Relay Explorer</h1>
+                                    <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-xs">
+                                        Cronos EVM Testnet
+                                    </Badge>
+                                </div>
                                 {latestBlock && (
                                     <div className="flex items-center gap-2 text-sm text-gray-500">
                                         <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse" />
@@ -1040,7 +989,7 @@ export function Explorer() {
                                                         <Globe className="h-4 w-4 text-muted-foreground" />
                                                         <span className="text-sm text-muted-foreground">Requests</span>
                                                     </div>
-                                                    <div className="text-2xl font-bold">{sysMetrics.requestsTotal.toLocaleString()}</div>
+                                                    <div className="text-2xl font-bold">{(sysMetrics.requestsTotal || 0).toLocaleString()}</div>
                                                     <Sparkline
                                                         data={sysMetrics.requestsPerMinute || []}
                                                         color="#3b82f6"
@@ -1053,7 +1002,7 @@ export function Explorer() {
                                                         <span className="text-sm text-muted-foreground">Success Rate</span>
                                                     </div>
                                                     <div className="text-2xl font-bold">
-                                                        {sysMetrics.requestsTotal > 0
+                                                        {(sysMetrics.requestsTotal || 0) > 0
                                                             ? (((sysMetrics.requestsSuccessful || sysMetrics.requestsSuccess || 0) / sysMetrics.requestsTotal) * 100).toFixed(1)
                                                             : 100}%
                                                     </div>
@@ -1070,7 +1019,7 @@ export function Explorer() {
                                                         <Database className="h-4 w-4 text-muted-foreground" />
                                                         <span className="text-sm text-muted-foreground">Memory</span>
                                                     </div>
-                                                    <div className="text-2xl font-bold">{sysMetrics.memoryUsageMb.toFixed(0)} MB</div>
+                                                    <div className="text-2xl font-bold">{(sysMetrics.memoryUsageMb || 0).toFixed(0)} MB</div>
                                                 </Card>
                                             </div>
                                         )}
@@ -1135,6 +1084,80 @@ export function Explorer() {
                                                 </CardContent>
                                             </Card>
                                         </div>
+
+                                        {/* Connections Status */}
+                                        {connections.length > 0 && (
+                                            <Card>
+                                                <CardHeader className="pb-2">
+                                                    <CardTitle className="text-sm font-medium">Connection Status</CardTitle>
+                                                </CardHeader>
+                                                <CardContent>
+                                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                                        {connections.map((conn) => (
+                                                            <div key={conn.name} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                                                {conn.status === 'connected' ? (
+                                                                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                                                                ) : (
+                                                                    <XCircle className="h-5 w-5 text-red-500" />
+                                                                )}
+                                                                <div>
+                                                                    <div className="font-medium text-sm">{conn.name}</div>
+                                                                    <div className="text-xs text-muted-foreground">
+                                                                        {conn.status === 'connected' ? (
+                                                                            conn.latestBlock ? `Block #${conn.latestBlock.toLocaleString()}` :
+                                                                            conn.latencyMs ? `${conn.latencyMs}ms` : 'Connected'
+                                                                        ) : (
+                                                                            conn.error || 'Disconnected'
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        )}
+
+                                        {/* Indexer Status */}
+                                        {indexers.length > 0 && (
+                                            <Card>
+                                                <CardHeader className="pb-2">
+                                                    <CardTitle className="text-sm font-medium">Indexer Status</CardTitle>
+                                                </CardHeader>
+                                                <CardContent>
+                                                    <div className="overflow-x-auto">
+                                                        <table className="w-full text-sm">
+                                                            <thead>
+                                                                <tr className="border-b">
+                                                                    <th className="text-left py-2 text-muted-foreground font-medium">Indexer</th>
+                                                                    <th className="text-left py-2 text-muted-foreground font-medium">Schedule</th>
+                                                                    <th className="text-left py-2 text-muted-foreground font-medium">Last Block</th>
+                                                                    <th className="text-left py-2 text-muted-foreground font-medium">Last Run</th>
+                                                                    <th className="text-left py-2 text-muted-foreground font-medium">Status</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {indexers.map((indexer) => (
+                                                                    <tr key={indexer.name} className="border-b last:border-0">
+                                                                        <td className="py-2 font-medium">{indexer.name}</td>
+                                                                        <td className="py-2 text-muted-foreground">{indexer.schedule}</td>
+                                                                        <td className="py-2 font-mono">
+                                                                            {indexer.lastBlock > 0 ? indexer.lastBlock.toLocaleString() : '-'}
+                                                                        </td>
+                                                                        <td className="py-2 text-muted-foreground">
+                                                                            {indexer.lastRun ? formatTimeAgo(indexer.lastRun) : 'Never'}
+                                                                        </td>
+                                                                        <td className="py-2">
+                                                                            <StatusBadge status={indexer.status} />
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        )}
                                     </motion.div>
                                 )}
                             </AnimatePresence>
@@ -1233,8 +1256,18 @@ export function Explorer() {
                                         <div>
                                             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Resource URL</label>
                                             <p className="mt-1 text-sm text-blue-600 break-all hover:underline">
-                                                <a href={selectedPayment.resourceUrl} target="_blank" rel="noopener noreferrer">
-                                                    {selectedPayment.resourceUrl}
+                                                <a
+                                                    href={selectedPayment.resourceUrl.startsWith('http')
+                                                        ? selectedPayment.resourceUrl
+                                                        : `${window.location.origin}${selectedPayment.resourceUrl}`
+                                                    }
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                >
+                                                    {selectedPayment.resourceUrl.startsWith('http')
+                                                        ? selectedPayment.resourceUrl
+                                                        : `${window.location.origin}${selectedPayment.resourceUrl}`
+                                                    }
                                                 </a>
                                             </p>
                                         </div>

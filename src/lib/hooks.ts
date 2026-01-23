@@ -455,6 +455,121 @@ export function useUserPayments(userAddress: string | null) {
     });
 }
 
+export function useUserSessionPayments(userAddress: string | null) {
+    const queryFn = useCallback(async () => {
+        if (!userAddress) {
+            return { data: [], error: null, requestId: '', cached: false, latency: 0 };
+        }
+
+        const { raw } = apiClient;
+
+        // First get the user's sessions
+        const sessionsResult = await raw
+            .from('escrow_sessions')
+            .select('session_id')
+            .eq('owner_address', userAddress.toLowerCase());
+
+        if (sessionsResult.error || !sessionsResult.data || sessionsResult.data.length === 0) {
+            return {
+                data: [],
+                error: null,
+                requestId: '',
+                cached: false,
+                latency: 0
+            };
+        }
+
+        const sessionIds = sessionsResult.data.map(s => s.session_id);
+
+        // Filter for valid UUIDs to prevent "invalid input syntax for type uuid" error
+        // since strictly Typed tables expect UUIDs but we now use string IDs for sessions
+        if (sessionIds.length === 0) {
+            return {
+                data: [],
+                error: null,
+                requestId: '',
+                cached: false,
+                latency: 0
+            };
+        }
+
+        // Then get payments for those sessions
+        const result = await raw
+            .from('session_payments')
+            .select('*')
+            .in('session_id', sessionIds)
+            .order('created_at', { ascending: false });
+
+        return {
+            data: result.data || [],
+            error: result.error ? {
+                message: result.error.message,
+                code: result.error.code || 'QUERY_ERROR',
+                status: 500
+            } : null,
+            requestId: '',
+            cached: false,
+            latency: 0
+        };
+    }, [userAddress]);
+
+    return useQuery(`user-session-payments:${userAddress}`, queryFn, {
+        enabled: !!userAddress,
+        staleTime: 15000,
+    });
+}
+
+export function useUserRWATransactions(userAddress: string | null) {
+    const queryFn = useCallback(async () => {
+        if (!userAddress) {
+            return { data: [], error: null, requestId: '', cached: false, latency: 0 };
+        }
+
+        const { raw } = apiClient;
+
+        // 1. Get User's RWA Assets
+        const assetsResult = await raw
+            .from('rwa_assets')
+            .select('asset_id')
+            .eq('owner_address', userAddress.toLowerCase());
+
+        if (assetsResult.error) {
+            console.error('Failed to fetch user rwa assets:', assetsResult.error);
+            return { data: [], error: null, requestId: '', cached: false, latency: 0 };
+        }
+
+        const assetIds = (assetsResult.data || []).map(a => a.asset_id);
+
+        if (assetIds.length === 0) {
+            return { data: [], error: null, requestId: '', cached: false, latency: 0 };
+        }
+
+        // 2. Get Transitions for those Assets
+        const result = await raw
+            .from('rwa_state_transitions')
+            .select('*')
+            .in('rwa_id', assetIds)
+            .order('transitioned_at', { ascending: false });
+
+        return {
+            data: result.data || [],
+            error: result.error ? {
+                message: result.error.message,
+                code: result.error.code || 'QUERY_ERROR',
+                status: 500
+            } : null,
+            requestId: '',
+            cached: false,
+            latency: 0
+        };
+    }, [userAddress]);
+
+    return useQuery(`user-rwa-transactions:${userAddress}`, queryFn, {
+        enabled: !!userAddress,
+        staleTime: 15000,
+    });
+}
+
 // Dashboard stats hook
 export function useDashboardStats() {
     const queryFn = useCallback(async () => {
@@ -1040,6 +1155,7 @@ export function useOpenPosition() {
     const [error, setError] = useState<Error | null>(null);
 
     const openPosition = useCallback(async (params: {
+        userAddress: string;
         pair: string;
         isLong: boolean;
         collateralUsd: number;

@@ -13,6 +13,8 @@ export const INDEXER_CONFIG = {
     IDENTITY_REGISTRY: process.env.IDENTITY_REGISTRY_ADDRESS || '0x4b697D8ABC0e3dA0086011222755d9029DBB9C43',
     REPUTATION_REGISTRY: process.env.REPUTATION_REGISTRY_ADDRESS || '0xdaFC2fA590C5Ba88155a009660dC3b14A3651a67',
     VALIDATION_REGISTRY: process.env.VALIDATION_REGISTRY_ADDRESS || '0x0483d030a1B1dA819dA08e2b73b01eFD28c67322',
+    ESCROW_CONTRACT: process.env.ESCROW_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000',
+    ESCROW_CONTRACT_DEPLOY_BLOCK: parseInt(process.env.ESCROW_CONTRACT_DEPLOY_BLOCK || '0'),
 
     // USDC Token (Testnet)
     USDC_ADDRESS: process.env.USDC_ADDRESS || '0xc01efAaF7C5C61bEbFAeb358E1161b537b8bC0e0',
@@ -22,6 +24,8 @@ export const INDEXER_CONFIG = {
     CRON_AGENT_INDEXER: '*/15 * * * *',       // Every 15 minutes
     CRON_REPUTATION_CALC: '0 1 * * *',        // Daily at 1:00 AM
     CRON_TRADE_INDEXER: '*/10 * * * *',       // Every 10 minutes
+    CRON_ESCROW_INDEXER: '*/2 * * * *',       // Every 2 minutes (high priority)
+    CRON_HANDOFF_INDEXER: '*/1 * * * *',      // Every 1 minute (for pending tx cleanup)
 
     // Indexer Settings
     BATCH_SIZE: 100,
@@ -52,4 +56,27 @@ export const CONTRACT_ABIS: Record<string, string[]> = {
         'function decimals() view returns (uint8)',
     ],
 };
+
+// Escrow Session Contract ABI (matches EscrowSession.sol)
+export const ESCROW_ABI = [
+    // Events
+    'event SessionCreated(uint256 indexed sessionId, address indexed owner, address escrowAgent, uint256 maxSpend, uint256 expiry)',
+    'event FundsDeposited(uint256 indexed sessionId, address indexed depositor, uint256 amount)',
+    'event PaymentReleased(uint256 indexed sessionId, address indexed agent, uint256 amount, bytes32 executionId)',
+    'event SessionRefunded(uint256 indexed sessionId, address indexed owner, uint256 amount)',
+    'event SessionClosed(uint256 indexed sessionId)',
+    'event AgentAuthorized(uint256 indexed sessionId, address indexed agent)',
+    'event AgentRevoked(uint256 indexed sessionId, address indexed agent)',
+
+    // View Functions
+    'function sessions(uint256) view returns (address owner, address escrowAgent, uint256 deposited, uint256 released, uint256 maxSpend, uint256 expiry, bool active)',
+    'function authorizedAgents(uint256, address) view returns (bool)',
+    'function agentSpend(uint256, address) view returns (uint256)',
+    'function remainingBalance(uint256 sessionId) view returns (uint256)',
+    'function getSession(uint256 sessionId) view returns (address owner, address escrowAgent, uint256 deposited, uint256 released, uint256 remaining, uint256 maxSpend, uint256 expiry, bool active)',
+    'function isAgentAuthorized(uint256 sessionId, address agent) view returns (bool)',
+    'function getAgentSpend(uint256 sessionId, address agent) view returns (uint256)',
+    'function sessionCounter() view returns (uint256)',
+    'function paymentToken() view returns (address)',
+];
 

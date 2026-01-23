@@ -63,7 +63,20 @@ export class TradeRouter {
 
                 const reputationScore = successRate * 100;
                 const feeScore = Math.max(0, 100 - (venue.trading_fee_bps / 5));
-                const liquidityScore = 80; // TODO: Query actual liquidity
+
+                // Query actual liquidity based on recent trade volume
+                const { data: recentTrades } = await supabase
+                    .from('trades')
+                    .select('size_usd')
+                    .eq('venue_id', venue.id)
+                    .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+
+                const totalVolume = recentTrades?.reduce((sum, t) => sum + (parseFloat(t.size_usd) || 0), 0) || 0;
+                // Score based on 24h volume: 100k+ = 100, 10k+ = 80, 1k+ = 60, else 40
+                const liquidityScore = totalVolume >= 100000 ? 100
+                    : totalVolume >= 10000 ? 80
+                        : totalVolume >= 1000 ? 60
+                            : 40;
 
                 // Weights optimized for execution quality
                 const weights = {
@@ -348,17 +361,31 @@ export class TradeRouter {
     async closePosition(tradeId: string, userAddress: string) {
         const { data: trade } = await supabase
             .from('trades')
-            .select('*')
+            .select('*, dex_venues(*)')
             .eq('id', tradeId)
             .eq('user_address', userAddress)
             .single();
 
         if (!trade) throw new Error('Trade not found');
 
+        // Determine which venue the position was opened on
+        const venueName = trade.dex_venues?.name?.toLowerCase() ||
+                          trade.metadata?.venue?.toLowerCase() ||
+                          'moonlander';
+
+        // Select the correct integration based on venue
+        const getIntegration = () => {
+            if (venueName.includes('gmx')) return gmxIntegration;
+            if (venueName.includes('fulcrum') || venueName.includes('fulcrom')) return fulcrumIntegration;
+            return moonlanderIntegration; // Default
+        };
+
+        const integration = getIntegration();
+
         try {
             // Get position and current price in parallel
             const [position, priceData] = await Promise.all([
-                moonlanderIntegration.getPosition(
+                integration.getPosition(
                     userAddress,
                     trade.pair,
                     trade.side === 'long'
@@ -369,12 +396,12 @@ export class TradeRouter {
             ]);
 
             if (!position) {
-                throw new Error('Position not found on Moonlander');
+                throw new Error(`Position not found on ${venueName}`);
             }
 
             const currentPrice = priceData.bestPrice;
 
-            const result = await moonlanderIntegration.closePosition({
+            const result = await integration.closePosition({
                 positionKey: position.key,
                 sizeUsd: trade.size_usd,
                 acceptableSlippage: 0.5,

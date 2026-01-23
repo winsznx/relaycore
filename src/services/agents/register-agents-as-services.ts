@@ -13,8 +13,8 @@ import { supabase, isSupabaseAvailable } from '../../lib/supabase';
 const PLATFORM_OWNER_ADDRESS = process.env.PAYMENT_RECIPIENT_ADDRESS || '0x0000000000000000000000000000000000000001';
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:4001';
 
-// PerpAI agents to register as services
-const PERPAI_AGENTS = [
+// All agents to register as services
+const PLATFORM_AGENTS = [
     {
         name: 'PerpAI Quote',
         description: 'Get price quotes and analysis for perpetual trades. Returns best venues, entry prices, funding rates, and risk metrics.',
@@ -110,6 +110,75 @@ const PERPAI_AGENTS = [
         output_type: 'VenuesResponse',
         tags: ['trading', 'perpetuals', 'defi', 'ai-agent', 'research'],
         capabilities: ['venue-discovery', 'market-info']
+    },
+    {
+        name: 'x402 Session Manager',
+        description: 'Gasless payment session management. Creates x402 sessions, tracks spending, manages agent payments, and handles refunds. All operations gasless via x402 protocol.',
+        category: 'compute',
+        endpoint_url: `${API_BASE_URL}/api/sessions/x402`,
+        price_per_call: '0.01', // $0.01 USDC to create session
+        input_schema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['create', 'activate', 'status', 'close'] },
+                ownerAddress: { type: 'string', description: 'Session owner address' },
+                maxSpend: { type: 'string', description: 'Maximum budget in USDC' },
+                durationHours: { type: 'number', description: 'Session duration in hours' },
+                sessionId: { type: 'number', description: 'Session ID (for activate/status/close)' },
+                txHash: { type: 'string', description: 'Payment transaction hash (for activate)' },
+                amount: { type: 'string', description: 'Payment amount (for activate)' }
+            },
+            required: ['action']
+        },
+        output_schema: {
+            type: 'object',
+            properties: {
+                session_id: { type: 'number' },
+                status: { type: 'string' },
+                deposited: { type: 'string' },
+                spent: { type: 'string' },
+                remaining: { type: 'string' },
+                payment_count: { type: 'number' },
+                paymentRequest: { type: 'object' }
+            }
+        },
+        input_type: 'SessionRequest',
+        output_type: 'SessionResponse',
+        tags: ['payments', 'x402', 'sessions', 'gasless', 'ai-agent'],
+        capabilities: ['session-management', 'budget-tracking', 'gasless-payments', 'auto-refund', 'agent-coordination']
+    },
+    {
+        name: 'RWA Settlement Agent',
+        description: 'Real-World Asset settlement coordination. Handles off-chain verification, multi-party approvals, and on-chain settlement for physical asset transactions.',
+        category: 'compute',
+        endpoint_url: `${API_BASE_URL}/api/agents/rwa-settlement/invoke`,
+        price_per_call: '0.25', // $0.25 USDC per request
+        input_schema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['initiate', 'verify', 'approve', 'settle'] },
+                request_id: { type: 'string', description: 'Settlement request ID' },
+                asset_type: { type: 'string', description: 'Type of RWA (real-estate, commodity, etc)' },
+                parties: { type: 'array', description: 'Involved parties and roles' },
+                amount: { type: 'string', description: 'Settlement amount' },
+                verification_docs: { type: 'array', description: 'IPFS hashes of verification documents' }
+            },
+            required: ['action']
+        },
+        output_schema: {
+            type: 'object',
+            properties: {
+                request_id: { type: 'string' },
+                status: { type: 'string' },
+                approvals: { type: 'array' },
+                tx_hash: { type: 'string' },
+                message: { type: 'string' }
+            }
+        },
+        input_type: 'RWARequest',
+        output_type: 'RWAResponse',
+        tags: ['rwa', 'settlement', 'verification', 'ai-agent', 'compliance'],
+        capabilities: ['rwa-verification', 'multi-party-approval', 'document-validation', 'settlement-coordination']
     }
 ];
 
@@ -121,9 +190,9 @@ export async function registerAgentsAsServices(): Promise<void> {
         console.warn('[Agent Registration] Supabase not available, skipping registration');
         return;
     }
-    console.log('[Agent Registration] Registering PerpAI agents as services...');
+    console.log('[Agent Registration] Registering platform agents as services...');
 
-    for (const agent of PERPAI_AGENTS) {
+    for (const agent of PLATFORM_AGENTS) {
         try {
             // Check if service already exists by name and owner
             const { data: existing } = await supabase
@@ -154,34 +223,88 @@ export async function registerAgentsAsServices(): Promise<void> {
                     console.error(`[Agent Registration] Failed to update service ${agent.name}`, error);
                 } else {
                     console.log(`[Agent Registration] Updated service: ${agent.name}`);
+
+                    // Ensure reputation record exists
+                    const { data: existingRep } = await supabase
+                        .from('reputations')
+                        .select('service_id')
+                        .eq('service_id', existing.id)
+                        .single();
+
+                    if (!existingRep) {
+                        await supabase.from('reputations').insert({
+                            service_id: existing.id,
+                            reputation_score: 80,
+                            success_rate: 100,
+                            total_payments: 0,
+                            successful_payments: 0,
+                            avg_latency_ms: 200
+                        });
+                    }
+
+                    // Update or insert schema
+                    const { data: existingSchema } = await supabase
+                        .from('service_schemas')
+                        .select('service_id')
+                        .eq('service_id', existing.id)
+                        .single();
+
+                    const schemaData = {
+                        service_id: existing.id,
+                        input_schema: agent.input_schema,
+                        output_schema: agent.output_schema,
+                        input_type: agent.input_type,
+                        output_type: agent.output_type,
+                        tags: agent.tags,
+                        capabilities: agent.capabilities,
+                        schema_version: '1.0'
+                    };
+
+                    if (existingSchema) {
+                        await supabase
+                            .from('service_schemas')
+                            .update(schemaData)
+                            .eq('service_id', existing.id);
+                    } else {
+                        await supabase
+                            .from('service_schemas')
+                            .insert(schemaData);
+                    }
                 }
             } else {
                 // Insert new service
-                const { error } = await supabase
+                const { data: newService, error } = await supabase
                     .from('services')
-                    .insert(serviceData);
+                    .insert(serviceData)
+                    .select('id')
+                    .single();
 
                 if (error) {
                     console.error(`[Agent Registration] Failed to register service ${agent.name}`, error);
                 } else {
                     console.log(`[Agent Registration] Registered new service: ${agent.name}`);
 
-                    // Also create initial reputation record
-                    const { data: newService } = await supabase
-                        .from('services')
-                        .select('id')
-                        .eq('name', agent.name)
-                        .eq('owner_address', PLATFORM_OWNER_ADDRESS)
-                        .single();
-
                     if (newService?.id) {
+                        // Create initial reputation record
                         await supabase.from('reputations').insert({
                             service_id: newService.id,
-                            reputation_score: 80, // Start with good score
+                            reputation_score: 80,
                             success_rate: 100,
                             total_payments: 0,
                             successful_payments: 0,
                             avg_latency_ms: 200
+                        });
+
+                        // Insert schema
+                        await supabase.from('service_schemas').insert({
+                            service_id: newService.id,
+                            input_schema: agent.input_schema,
+                            output_schema: agent.output_schema,
+                            input_type: agent.input_type,
+                            output_type: agent.output_type,
+                            tags: agent.tags,
+                            capabilities: agent.capabilities,
+                            schema_version: '1.0'
                         });
                     }
                 }
@@ -191,5 +314,5 @@ export async function registerAgentsAsServices(): Promise<void> {
         }
     }
 
-    console.log('[Agent Registration] PerpAI agent registration complete');
+    console.log('[Agent Registration] Platform agent registration complete');
 }

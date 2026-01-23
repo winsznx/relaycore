@@ -1,5 +1,7 @@
 # Claude AI Service
 
+![Relay Core](../../assets/relaycore.png)
+
 AI-powered capabilities for Relay Core using Anthropic's Claude API.
 
 ## Features

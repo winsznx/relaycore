@@ -1,0 +1,23 @@
+{
+    "extends": "../../tsconfig.json",
+    "compilerOptions": {
+        "moduleResolution": "node",
+        "baseUrl": ".",
+        "paths": {
+            "*": [
+                "*"
+            ]
+        },
+        "composite": true,
+        "declaration": true,
+        "emitDeclarationOnly": false,
+        "outDir": "dist"
+    },
+    "include": [
+        "**/*.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ]
+}

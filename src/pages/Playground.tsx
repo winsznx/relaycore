@@ -1,770 +1,955 @@
-/**
- * Agent Playground - Enhanced with Mock/Real Execution
- * 
- * Visual node-based canvas for building agent workflows:
- * - Drag-and-drop node creation
- * - Connect agents, endpoints, sessions, wallets
- * - Mock simulation OR real end-to-end execution
- * - Export/import configurations
- * 
- * Built with @xyflow/react (React Flow)
- */
-
-import { useCallback, useState, useRef } from 'react';
+import { useCallback, useState } from 'react';
 import {
     ReactFlow,
     Controls,
     Background,
-    MiniMap,
     useNodesState,
     useEdgesState,
     addEdge,
     MarkerType,
-    Panel,
-    Handle,
-    Position,
     BackgroundVariant
 } from '@xyflow/react';
 import type { Node, Edge, Connection, NodeTypes } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-    Bot, Wallet, Shield, Play, Pause, Save,
-    Download, Trash2, RotateCcw, Layers, CreditCard, Globe, Box
+    Play, Trash2, Eye, EyeOff, Activity, Wallet as WalletIcon
 } from 'lucide-react';
-import { useWallet } from '@/hooks/useWallet';
 import logoFavicon from '@/assets/relay-favicon.svg';
 
-// ============================================
-// NODE TYPES
-// ============================================
+import { AgentNode } from './Playground/components/nodes/AgentNode';
+import { SessionNode } from './Playground/components/nodes/SessionNode';
+import { WalletNode } from './Playground/components/nodes/WalletNode';
+import { IndexerNode } from './Playground/components/nodes/IndexerNode';
+import { EndpointNode } from './Playground/components/nodes/EndpointNode';
+import { X402Step1Node } from './Playground/components/nodes/X402Step1Node';
+import { X402Step2Node } from './Playground/components/nodes/X402Step2Node';
+import { X402Step3Node } from './Playground/components/nodes/X402Step3Node';
+import { X402Step4Node } from './Playground/components/nodes/X402Step4Node';
+import { X402Step5Node } from './Playground/components/nodes/X402Step5Node';
+import { X402Step6Node } from './Playground/components/nodes/X402Step6Node';
+import { X402Step7Node } from './Playground/components/nodes/X402Step7Node';
+import { X402Step8Node } from './Playground/components/nodes/X402Step8Node';
+import { X402Step9Node } from './Playground/components/nodes/X402Step9Node';
+import { ServiceAgentDiscoveryNode } from './Playground/components/nodes/ServiceAgentDiscoveryNode';
+import { ServiceSessionManagerNode } from './Playground/components/nodes/ServiceSessionManagerNode';
+import { ServiceDexAggregatorNode } from './Playground/components/nodes/ServiceDexAggregatorNode';
+import { ServiceRwaSettlementNode } from './Playground/components/nodes/ServiceRwaSettlementNode';
+import { ServiceMetaAgentNode } from './Playground/components/nodes/ServiceMetaAgentNode';
+import { ServicePaymentIndexerNode } from './Playground/components/nodes/ServicePaymentIndexerNode';
+import { ServiceAgentRegistryNode } from './Playground/components/nodes/ServiceAgentRegistryNode';
+import { ServiceEscrowNode } from './Playground/components/nodes/ServiceEscrowNode';
+import { ServiceTradeRouterNode } from './Playground/components/nodes/ServiceTradeRouterNode';
+import { ServicePythOracleNode } from './Playground/components/nodes/ServicePythOracleNode';
+import { ServiceAgentIndexerNode } from './Playground/components/nodes/ServiceAgentIndexerNode';
+import { ServiceReputationIndexerNode } from './Playground/components/nodes/ServiceReputationIndexerNode';
+import { ServiceRwaStateIndexerNode } from './Playground/components/nodes/ServiceRwaStateIndexerNode';
+import { ServiceIdentityNode } from './Playground/components/nodes/ServiceIdentityNode';
+import { ServiceSocialIdentityNode } from './Playground/components/nodes/ServiceSocialIdentityNode';
+import { ServiceCronosSdkNode } from './Playground/components/nodes/ServiceCronosSdkNode';
+import { ServiceCryptoMcpNode } from './Playground/components/nodes/ServiceCryptoMcpNode';
+import { ServiceWellKnownNode } from './Playground/components/nodes/ServiceWellKnownNode';
+import { ServiceHealthCheckNode } from './Playground/components/nodes/ServiceHealthCheckNode';
+import { ServiceObservabilityNode } from './Playground/components/nodes/ServiceObservabilityNode';
+import { ServiceTaskStoreNode } from './Playground/components/nodes/ServiceTaskStoreNode';
+import { ServiceRwaProofNode } from './Playground/components/nodes/ServiceRwaProofNode';
 
-// Agent Node
-function AgentNode({ data }: { data: any }) {
-    return (
-        <div className="relative">
-            <Handle type="target" position={Position.Left} className="!bg-blue-500 !w-3 !h-3" />
-            <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className={`px-4 py-3 shadow-lg rounded-xl border-2 min-w-[160px] ${data.status === 'active' ? 'border-green-400 bg-gradient-to-br from-green-50 to-emerald-50' :
-                    data.status === 'error' ? 'border-red-400 bg-gradient-to-br from-red-50 to-pink-50' :
-                        'border-blue-400 bg-gradient-to-br from-blue-50 to-indigo-50'
-                    }`}
-            >
-                <div className="flex items-center gap-2">
-                    <div className={`p-1.5 rounded-lg ${data.status === 'active' ? 'bg-green-500' :
-                        data.status === 'error' ? 'bg-red-500' : 'bg-blue-500'
-                        }`}>
-                        <Bot className="h-4 w-4 text-white" />
-                    </div>
-                    <div>
-                        <div className="font-semibold text-sm text-gray-800">{data.label || 'Agent'}</div>
-                        <div className="text-xs text-gray-500">{data.type || 'AI Agent'}</div>
-                    </div>
-                </div>
-                {data.status && (
-                    <div className="mt-2 flex items-center gap-1">
-                        <motion.div
-                            className={`w-2 h-2 rounded-full ${data.status === 'active' ? 'bg-green-500' :
-                                data.status === 'error' ? 'bg-red-500' : 'bg-yellow-500'
-                                }`}
-                            animate={data.status === 'active' ? { scale: [1, 1.2, 1], opacity: [1, 0.7, 1] } : {}}
-                            transition={{ duration: 1.5, repeat: Infinity }}
-                        />
-                        <span className="text-xs capitalize text-gray-600">{data.status}</span>
-                    </div>
-                )}
-            </motion.div>
-            <Handle type="source" position={Position.Right} className="!bg-blue-500 !w-3 !h-3" />
-        </div>
-    );
-}
+import { UtilLoggerNode } from './Playground/components/nodes/UtilLoggerNode';
+import { UtilInspectorNode } from './Playground/components/nodes/UtilInspectorNode';
+import { UtilDelayNode } from './Playground/components/nodes/UtilDelayNode';
+import { UtilConditionalNode } from './Playground/components/nodes/UtilConditionalNode';
 
-// Endpoint Node
-function EndpointNode({ data }: { data: any }) {
-    return (
-        <div className="relative">
-            <Handle type="target" position={Position.Left} className="!bg-purple-500 !w-3 !h-3" />
-            <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="px-4 py-3 shadow-lg rounded-xl border-2 border-purple-400 bg-gradient-to-br from-purple-50 to-fuchsia-50 min-w-[160px]"
-            >
-                <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-purple-500">
-                        <Globe className="h-4 w-4 text-white" />
-                    </div>
-                    <div>
-                        <div className="font-semibold text-sm text-gray-800">{data.label || 'Endpoint'}</div>
-                        <div className="text-xs text-gray-500 truncate max-w-[120px]">{data.url || 'api.example.com'}</div>
-                    </div>
-                </div>
-                {data.price && (
-                    <div className="mt-2 text-xs">
-                        <span className="text-purple-600 font-medium">${data.price}/call</span>
-                    </div>
-                )}
-            </motion.div>
-            <Handle type="source" position={Position.Right} className="!bg-purple-500 !w-3 !h-3" />
-        </div>
-    );
-}
+import { InspectorPanel } from './Playground/components/panels/InspectorPanel';
+import { ActivityStream } from './Playground/components/panels/ActivityStream';
 
-// Session Node
-function SessionNode({ data }: { data: any }) {
-    return (
-        <div className="relative">
-            <Handle type="target" position={Position.Left} className="!bg-emerald-500 !w-3 !h-3" />
-            <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="px-4 py-3 shadow-lg rounded-xl border-2 border-emerald-400 bg-gradient-to-br from-emerald-50 to-teal-50 min-w-[160px]"
-            >
-                <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-emerald-500">
-                        <Layers className="h-4 w-4 text-white" />
-                    </div>
-                    <div>
-                        <div className="font-semibold text-sm text-gray-800">{data.label || 'Session'}</div>
-                        <div className="text-xs text-gray-500">{data.sessionId?.slice(0, 10) || 'Escrow Session'}...</div>
-                    </div>
-                </div>
-                {data.budget && (
-                    <div className="mt-2 flex items-center justify-between text-xs">
-                        <span className="text-gray-500">Budget:</span>
-                        <span className="text-emerald-600 font-medium">${data.budget}</span>
-                    </div>
-                )}
-            </motion.div>
-            <Handle type="source" position={Position.Right} className="!bg-emerald-500 !w-3 !h-3" />
-        </div>
-    );
-}
-
-// Wallet Node
-function WalletNode({ data }: { data: any }) {
-    return (
-        <div className="relative">
-            <Handle type="target" position={Position.Left} className="!bg-orange-500 !w-3 !h-3" />
-            <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="px-4 py-3 shadow-lg rounded-xl border-2 border-orange-400 bg-gradient-to-br from-orange-50 to-amber-50 min-w-[160px]"
-            >
-                <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-orange-500">
-                        <Wallet className="h-4 w-4 text-white" />
-                    </div>
-                    <div>
-                        <div className="font-semibold text-sm text-gray-800">{data.label || 'Wallet'}</div>
-                        <div className="text-xs text-gray-500 font-mono">{data.address?.slice(0, 8) || '0x...'}...</div>
-                    </div>
-                </div>
-                {data.balance && (
-                    <div className="mt-2 text-xs">
-                        <span className="text-orange-600 font-medium">{data.balance} CRO</span>
-                    </div>
-                )}
-            </motion.div>
-            <Handle type="source" position={Position.Right} className="!bg-orange-500 !w-3 !h-3" />
-        </div>
-    );
-}
-
-// Escrow Node
-function EscrowNode({ data }: { data: any }) {
-    return (
-        <div className="relative">
-            <Handle type="target" position={Position.Left} className="!bg-cyan-500 !w-3 !h-3" />
-            <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="px-4 py-3 shadow-lg rounded-xl border-2 border-cyan-400 bg-gradient-to-br from-cyan-50 to-sky-50 min-w-[160px]"
-            >
-                <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-cyan-500">
-                        <Shield className="h-4 w-4 text-white" />
-                    </div>
-                    <div>
-                        <div className="font-semibold text-sm text-gray-800">{data.label || 'Escrow'}</div>
-                        <div className="text-xs text-gray-500">{data.state || 'Contract'}</div>
-                    </div>
-                </div>
-                {data.locked && (
-                    <div className="mt-2 text-xs">
-                        <span className="text-cyan-600 font-medium">Locked: ${data.locked}</span>
-                    </div>
-                )}
-            </motion.div>
-            <Handle type="source" position={Position.Right} className="!bg-cyan-500 !w-3 !h-3" />
-        </div>
-    );
-}
-
-// x402 Payment Node
-function PaymentNode({ data }: { data: any }) {
-    return (
-        <div className="relative">
-            <Handle type="target" position={Position.Left} className="!bg-pink-500 !w-3 !h-3" />
-            <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="px-4 py-3 shadow-lg rounded-xl border-2 border-pink-400 bg-gradient-to-br from-pink-50 to-rose-50 min-w-[160px]"
-            >
-                <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-pink-500">
-                        <CreditCard className="h-4 w-4 text-white" />
-                    </div>
-                    <div>
-                        <div className="font-semibold text-sm text-gray-800">{data.label || 'x402 Payment'}</div>
-                        <div className="text-xs text-gray-500">{data.status || 'Pending'}</div>
-                    </div>
-                </div>
-                {data.amount && (
-                    <div className="mt-2 text-xs">
-                        <span className="text-pink-600 font-medium">${data.amount} USDC</span>
-                    </div>
-                )}
-            </motion.div>
-            <Handle type="source" position={Position.Right} className="!bg-pink-500 !w-3 !h-3" />
-        </div>
-    );
-}
-
-// ============================================
-// NODE PALETTE
-// ============================================
-
-interface PaletteItem {
-    type: string;
-    label: string;
-    icon: any;
-    color: string;
-    description: string;
-}
-
-const nodePalette: PaletteItem[] = [
-    { type: 'agent', label: 'Agent', icon: Bot, color: 'bg-blue-500', description: 'AI agent that executes tasks' },
-    { type: 'endpoint', label: 'Endpoint', icon: Globe, color: 'bg-purple-500', description: 'API service endpoint' },
-    { type: 'session', label: 'Session', icon: Layers, color: 'bg-emerald-500', description: 'Escrow session with budget' },
-    { type: 'wallet', label: 'Wallet', icon: Wallet, color: 'bg-orange-500', description: 'User wallet for signing' },
-    { type: 'escrow', label: 'Escrow', icon: Shield, color: 'bg-cyan-500', description: 'Smart contract escrow' },
-    { type: 'payment', label: 'Payment', icon: CreditCard, color: 'bg-pink-500', description: 'x402 payment flow' }
-];
-
-// ============================================
-// SIMULATION PANEL WITH MOCK/REAL TOGGLE
-// ============================================
-
-function SimulationPanel({
-    isRunning,
-    onStart,
-    onPause,
-    onReset,
-    executionLog,
-    executionMode,
-    onModeChange
-}: {
-    isRunning: boolean;
-    onStart: () => void;
-    onPause: () => void;
-    onReset: () => void;
-    executionLog: string[];
-    executionMode: 'mock' | 'real';
-    onModeChange: (mode: 'mock' | 'real') => void;
-}) {
-    return (
-        <Card className="w-80 shadow-xl border-0">
-            <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                    <Play className="h-4 w-4" />
-                    Simulation
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-                {/* Mode Toggle */}
-                <div className="flex items-center gap-2 p-2 bg-gray-100 rounded-lg">
-                    <button
-                        onClick={() => onModeChange('mock')}
-                        disabled={isRunning}
-                        className={`flex-1 px-3 py-2 rounded-md text-xs font-semibold transition-all ${executionMode === 'mock'
-                            ? 'bg-white text-gray-900 shadow-sm'
-                            : 'text-gray-600 hover:text-gray-900'
-                            } ${isRunning ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                    >
-                        Mock
-                    </button>
-                    <button
-                        onClick={() => onModeChange('real')}
-                        disabled={isRunning}
-                        className={`flex-1 px-3 py-2 rounded-md text-xs font-semibold transition-all ${executionMode === 'real'
-                            ? 'bg-green-600 text-white shadow-sm'
-                            : 'text-gray-600 hover:text-gray-900'
-                            } ${isRunning ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                    >
-                        Real
-                    </button>
-                </div>
-
-                {/* Mode Description */}
-                <div className="text-xs text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
-                    {executionMode === 'mock' ? (
-                        <span>Simulated flow with mock data</span>
-                    ) : (
-                        <span className="text-green-700">
-                            <strong>Real execution:</strong> Actual x402 payments, on-chain settlement
-                        </span>
-                    )}
-                </div>
-
-                {/* Control Buttons */}
-                <div className="flex gap-2">
-                    {!isRunning ? (
-                        <Button
-                            onClick={onStart}
-                            className={`flex-1 ${executionMode === 'real'
-                                ? 'bg-green-600 hover:bg-green-700'
-                                : 'bg-blue-600 hover:bg-blue-700'
-                                }`}
-                        >
-                            <Play className="h-4 w-4 mr-2" />
-                            {executionMode === 'real' ? 'Execute' : 'Start'}
-                        </Button>
-                    ) : (
-                        <Button onClick={onPause} className="flex-1 bg-yellow-600 hover:bg-yellow-700">
-                            <Pause className="h-4 w-4 mr-2" />
-                            Pause
-                        </Button>
-                    )}
-                    <Button onClick={onReset} variant="outline" size="icon">
-                        <RotateCcw className="h-4 w-4" />
-                    </Button>
-                </div>
-
-                {/* Execution Log */}
-                <div className="bg-gray-900 rounded-lg p-3 max-h-[200px] overflow-y-auto">
-                    <div className="text-xs font-mono space-y-1">
-                        {executionLog.length === 0 ? (
-                            <span className="text-gray-500">No execution logs yet...</span>
-                        ) : (
-                            executionLog.map((log, i) => (
-                                <motion.div
-                                    key={i}
-                                    initial={{ opacity: 0, x: -10 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    className={`${log.includes('ERROR') ? 'text-red-400' :
-                                        log.includes('SUCCESS') ? 'text-green-400' :
-                                            log.includes('PAYMENT') ? 'text-pink-400' :
-                                                log.includes('REAL') ? 'text-cyan-400' :
-                                                    'text-gray-300'
-                                        }`}
-                                >
-                                    {log}
-                                </motion.div>
-                            ))
-                        )}
-                    </div>
-                </div>
-            </CardContent>
-        </Card>
-    );
-}
-
-// ============================================
-// MAIN PLAYGROUND COMPONENT
-// ============================================
+import { useRealtimeExecution } from './Playground/hooks/useRealtimeExecution';
+import { RealExecutionEngine } from './Playground/engine/RealExecutionEngine';
+import type {
+    ExecutionMode,
+    ExecutionLogEntry,
+    PlaygroundNode,
+    PlaygroundEdge
+} from './Playground/types/playground.types';
 
 const nodeTypes: NodeTypes = {
     agent: AgentNode,
-    endpoint: EndpointNode,
     session: SessionNode,
     wallet: WalletNode,
-    escrow: EscrowNode,
-    payment: PaymentNode
+    indexer: IndexerNode,
+    endpoint: EndpointNode,
+    x402_step1: X402Step1Node,
+    x402_step2: X402Step2Node,
+    x402_step3: X402Step3Node,
+    x402_step4: X402Step4Node,
+    x402_step5: X402Step5Node,
+    x402_step6: X402Step6Node,
+    x402_step7: X402Step7Node,
+    x402_step8: X402Step8Node,
+    x402_step9: X402Step9Node,
+    service_agent_discovery: ServiceAgentDiscoveryNode,
+    service_session_manager: ServiceSessionManagerNode,
+    service_dex_aggregator: ServiceDexAggregatorNode,
+    service_rwa_settlement: ServiceRwaSettlementNode,
+    service_meta_agent: ServiceMetaAgentNode,
+    service_payment_indexer: ServicePaymentIndexerNode,
+    service_agent_registry: ServiceAgentRegistryNode,
+    service_escrow: ServiceEscrowNode,
+    service_trade_router: ServiceTradeRouterNode,
+    service_pyth_oracle: ServicePythOracleNode,
+    service_agent_indexer: ServiceAgentIndexerNode,
+    service_reputation_indexer: ServiceReputationIndexerNode,
+    service_rwa_state_indexer: ServiceRwaStateIndexerNode,
+    service_identity: ServiceIdentityNode,
+    service_social_identity: ServiceSocialIdentityNode,
+    service_cronos_sdk: ServiceCronosSdkNode,
+    service_crypto_mcp: ServiceCryptoMcpNode,
+    service_well_known: ServiceWellKnownNode,
+    service_health_check: ServiceHealthCheckNode,
+    service_observability: ServiceObservabilityNode,
+    service_task_store: ServiceTaskStoreNode,
+    service_rwa_proof: ServiceRwaProofNode,
+    util_logger: UtilLoggerNode,
+    util_inspector: UtilInspectorNode,
+    util_delay: UtilDelayNode,
+    util_conditional: UtilConditionalNode
 };
 
-const initialNodes: Node[] = [
-    {
-        id: 'wallet-1',
-        type: 'wallet',
-        position: { x: 100, y: 200 },
-        data: { label: 'User Wallet', address: '0x742d35Cc6634C0532925a3b844Bc454e4438f51B', balance: '150.5' }
-    },
-    {
-        id: 'session-1',
-        type: 'session',
-        position: { x: 350, y: 200 },
-        data: { label: 'Dev Session', sessionId: '0x1234567890abcdef', budget: '50.00' }
-    },
-    {
-        id: 'agent-1',
-        type: 'agent',
-        position: { x: 600, y: 150 },
-        data: { label: 'Trade Bot', type: 'DeFi Agent', status: 'idle' }
-    },
-    {
-        id: 'endpoint-1',
-        type: 'endpoint',
-        position: { x: 600, y: 280 },
-        data: { label: 'VVS DEX', url: 'https://vvs.finance/api', price: '0.01' }
-    }
+const nodeTemplates = [
+    { type: 'wallet', label: 'Wallet', description: 'User wallet' },
+    { type: 'session', label: 'Session', description: 'Escrow session' },
+    { type: 'agent', label: 'Agent', description: 'AI agent' },
+    { type: 'endpoint', label: 'Endpoint', description: 'API service' },
+    { type: 'indexer', label: 'Indexer', description: 'Blockchain indexer' },
+    { type: 'x402_step1', label: 'Step 1: Request', description: 'Initial resource request' },
+    { type: 'x402_step2', label: 'Step 2: Challenge', description: '402 payment challenge' },
+    { type: 'x402_step3', label: 'Step 3: Authorize', description: 'EIP-3009 signature' },
+    { type: 'x402_step4', label: 'Step 4: Submit', description: 'Submit payment' },
+    { type: 'x402_step5', label: 'Step 5: Verify', description: 'Verify signature' },
+    { type: 'x402_step6', label: 'Step 6: Settle', description: 'On-chain settlement' },
+    { type: 'x402_step7', label: 'Step 7: Confirm', description: 'Wait for confirmations' },
+    { type: 'x402_step8', label: 'Step 8: Retry', description: 'Retry with payment ID' },
+    { type: 'x402_step9', label: 'Step 9: Deliver', description: 'Receive content' },
+    { type: 'service_agent_discovery', label: 'Agent Discovery', description: 'Find agents by capability' },
+    { type: 'service_session_manager', label: 'Session Manager', description: 'Create escrow session' },
+    { type: 'service_dex_aggregator', label: 'DEX Aggregator', description: 'Get best price across DEXes' },
+    { type: 'service_rwa_settlement', label: 'RWA Settlement', description: 'Real-world asset settlement' },
+    { type: 'service_meta_agent', label: 'Meta Agent', description: 'Delegate tasks to agents' },
+    { type: 'service_payment_indexer', label: 'Payment Indexer', description: 'Index payment transactions' },
+    { type: 'service_agent_registry', label: 'Agent Registry', description: 'Register new agents' },
+    { type: 'service_escrow', label: 'Escrow Agent', description: 'Release escrow payments' },
+    { type: 'service_trade_router', label: 'Trade Router', description: 'Find best trade route' },
+    { type: 'service_pyth_oracle', label: 'Pyth Oracle', description: 'Get price feeds' },
+    { type: 'service_agent_indexer', label: 'Agent Indexer', description: 'Index agent activity' },
+    { type: 'service_reputation_indexer', label: 'Reputation Indexer', description: 'Track reputation scores' },
+    { type: 'service_rwa_state_indexer', label: 'RWA State Indexer', description: 'Track RWA state' },
+    { type: 'service_identity', label: 'Identity Resolution', description: 'Resolve wallet identities' },
+    { type: 'service_social_identity', label: 'Social Identity', description: 'Link social accounts' },
+    { type: 'service_cronos_sdk', label: 'Cronos SDK', description: 'Cronos blockchain operations' },
+    { type: 'service_crypto_mcp', label: 'Crypto.com MCP', description: 'Market data from Crypto.com' },
+    { type: 'service_well_known', label: 'Well-Known Service', description: 'Fetch agent cards' },
+    { type: 'service_health_check', label: 'Health Check', description: 'Check service health' },
+    { type: 'service_observability', label: 'Observability', description: 'Metrics and traces' },
+    { type: 'service_task_store', label: 'Task Store', description: 'Create and track tasks' },
+    { type: 'service_rwa_proof', label: 'RWA Proof', description: 'Submit RWA proofs' },
+    { type: 'util_logger', label: 'Logger', description: 'Collect execution logs' },
+    { type: 'util_inspector', label: 'Inspector', description: 'Inspect data flow' },
+    { type: 'util_delay', label: 'Delay', description: 'Add time delay' },
+    { type: 'util_conditional', label: 'Conditional', description: 'Branch based on condition' }
 ];
 
-const initialEdges: Edge[] = [
-    {
-        id: 'e1-2',
-        source: 'wallet-1',
-        target: 'session-1',
-        animated: true,
-        style: { stroke: '#f59e0b' },
-        markerEnd: { type: MarkerType.ArrowClosed }
-    },
-    {
-        id: 'e2-3',
-        source: 'session-1',
-        target: 'agent-1',
-        animated: true,
-        style: { stroke: '#10b981' },
-        markerEnd: { type: MarkerType.ArrowClosed }
-    },
-    {
-        id: 'e3-4',
-        source: 'agent-1',
-        target: 'endpoint-1',
-        animated: true,
-        style: { stroke: '#8b5cf6' },
-        markerEnd: { type: MarkerType.ArrowClosed }
+const demoFlows = {
+    complete_x402_flow: {
+        name: 'Complete x402 Payment Flow',
+        description: 'All 9 steps of x402 payment protocol',
+        nodes: [
+            {
+                id: 'step1',
+                type: 'x402_step1',
+                position: { x: 50, y: 100 },
+                data: {
+                    label: 'Initial Request',
+                    status: 'idle',
+                    config: {
+                        url: 'https://api.relaycore.xyz/agent/hire',
+                        method: 'GET'
+                    }
+                }
+            },
+            {
+                id: 'step2',
+                type: 'x402_step2',
+                position: { x: 300, y: 100 },
+                data: {
+                    label: 'Payment Challenge',
+                    status: 'idle'
+                }
+            },
+            {
+                id: 'step3',
+                type: 'x402_step3',
+                position: { x: 550, y: 100 },
+                data: {
+                    label: 'Generate Authorization',
+                    status: 'idle'
+                }
+            },
+            {
+                id: 'step4',
+                type: 'x402_step4',
+                position: { x: 800, y: 100 },
+                data: {
+                    label: 'Submit Payment',
+                    status: 'idle'
+                }
+            },
+            {
+                id: 'step5',
+                type: 'x402_step5',
+                position: { x: 1050, y: 100 },
+                data: {
+                    label: 'Verify Signature',
+                    status: 'idle'
+                }
+            },
+            {
+                id: 'step6',
+                type: 'x402_step6',
+                position: { x: 1300, y: 100 },
+                data: {
+                    label: 'On-Chain Settlement',
+                    status: 'idle'
+                }
+            },
+            {
+                id: 'step7',
+                type: 'x402_step7',
+                position: { x: 1550, y: 100 },
+                data: {
+                    label: 'Confirm Settlement',
+                    status: 'idle'
+                }
+            },
+            {
+                id: 'step8',
+                type: 'x402_step8',
+                position: { x: 1800, y: 100 },
+                data: {
+                    label: 'Retry Request',
+                    status: 'idle'
+                }
+            },
+            {
+                id: 'step9',
+                type: 'x402_step9',
+                position: { x: 2050, y: 100 },
+                data: {
+                    label: 'Content Delivery',
+                    status: 'idle'
+                }
+            }
+        ],
+        edges: [
+            {
+                id: 'e1-2',
+                source: 'step1',
+                target: 'step2',
+                animated: true,
+                style: { stroke: '#3b82f6', strokeWidth: 2 },
+                markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' }
+            },
+            {
+                id: 'e2-3',
+                source: 'step2',
+                target: 'step3',
+                animated: true,
+                style: { stroke: '#8b5cf6', strokeWidth: 2 },
+                markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' }
+            },
+            {
+                id: 'e3-4',
+                source: 'step3',
+                target: 'step4',
+                animated: true,
+                style: { stroke: '#f59e0b', strokeWidth: 2 },
+                markerEnd: { type: MarkerType.ArrowClosed, color: '#f59e0b' }
+            },
+            {
+                id: 'e4-5',
+                source: 'step4',
+                target: 'step5',
+                animated: true,
+                style: { stroke: '#06b6d4', strokeWidth: 2 },
+                markerEnd: { type: MarkerType.ArrowClosed, color: '#06b6d4' }
+            },
+            {
+                id: 'e5-6',
+                source: 'step5',
+                target: 'step6',
+                animated: true,
+                style: { stroke: '#6366f1', strokeWidth: 2 },
+                markerEnd: { type: MarkerType.ArrowClosed, color: '#6366f1' }
+            },
+            {
+                id: 'e6-7',
+                source: 'step6',
+                target: 'step7',
+                animated: true,
+                style: { stroke: '#10b981', strokeWidth: 2 },
+                markerEnd: { type: MarkerType.ArrowClosed, color: '#10b981' }
+            },
+            {
+                id: 'e7-8',
+                source: 'step7',
+                target: 'step8',
+                animated: true,
+                style: { stroke: '#14b8a6', strokeWidth: 2 },
+                markerEnd: { type: MarkerType.ArrowClosed, color: '#14b8a6' }
+            },
+            {
+                id: 'e8-9',
+                source: 'step8',
+                target: 'step9',
+                animated: true,
+                style: { stroke: '#8b5cf6', strokeWidth: 2 },
+                markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' }
+            }
+        ]
     }
-];
+};
 
 export function Playground() {
-    const reactFlowWrapper = useRef<HTMLDivElement>(null);
-    const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-    const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+    const [address, setAddress] = useState<string | undefined>();
+    const [isConnected, setIsConnected] = useState(false);
+
+    const [nodes, setNodes, onNodesChange] = useNodesState([] as unknown as Node[]);
+    const [edges, setEdges, onEdgesChange] = useEdgesState([] as unknown as Edge[]);
     const [isRunning, setIsRunning] = useState(false);
-    const [executionLog, setExecutionLog] = useState<string[]>([]);
+    const [executionMode, setExecutionMode] = useState<ExecutionMode>('mock');
+    const [executionLog, setExecutionLog] = useState<ExecutionLogEntry[]>([]);
+    const [selectedNode, setSelectedNode] = useState<PlaygroundNode | null>(null);
+    const [showInspector, setShowInspector] = useState(false);
+    const [showActivity, setShowActivity] = useState(true);
     const [showPalette, setShowPalette] = useState(true);
-    const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-    const [executionMode, setExecutionMode] = useState<'mock' | 'real'>('mock');
+    const [nodeIdCounter, setNodeIdCounter] = useState(1);
+
+    const { lastUpdate } = useRealtimeExecution({
+        mode: executionMode,
+        onNodeUpdate: (nodeId, data) => {
+            setNodes(nds => nds.map(n =>
+                n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n
+            ));
+        },
+        onEdgeUpdate: (edgeId, data) => {
+            setEdges(eds => eds.map(e =>
+                e.id === edgeId ? { ...e, ...data } : e
+            ));
+        },
+        onLog: (entry) => {
+            setExecutionLog(prev => [...prev, {
+                ...entry,
+                id: `log-${Date.now()}-${Math.random()}`,
+                timestamp: new Date()
+            }]);
+        }
+    });
 
     const onConnect = useCallback(
-        (params: Connection) => setEdges((eds) => addEdge({
-            ...params,
-            animated: true,
-            markerEnd: { type: MarkerType.ArrowClosed }
-        }, eds)),
+        (params: Connection) => setEdges((eds) => addEdge(params, eds)),
         [setEdges]
     );
 
-    const onDragOver = useCallback((event: React.DragEvent) => {
-        event.preventDefault();
-        event.dataTransfer.dropEffect = 'move';
+    const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+        setSelectedNode(node as unknown as PlaygroundNode);
+        setShowInspector(true);
     }, []);
 
-    const onDrop = useCallback(
-        (event: React.DragEvent) => {
-            event.preventDefault();
-            const type = event.dataTransfer.getData('application/reactflow');
-            if (!type) return;
+    const addNodeFromPalette = useCallback((nodeType: string) => {
+        const newNode: PlaygroundNode = {
+            id: `${nodeType}-${nodeIdCounter}`,
+            type: nodeType,
+            position: { x: 250 + Math.random() * 200, y: 150 + Math.random() * 200 },
+            data: createNodeData(nodeType)
+        };
 
-            const position = {
-                x: event.clientX - 250,
-                y: event.clientY - 100
-            };
+        setNodes(nds => [...nds, newNode as unknown as Node]);
+        setNodeIdCounter(c => c + 1);
+    }, [nodeIdCounter, setNodes]);
 
-            const newNode: Node = {
-                id: `${type}-${Date.now()}`,
-                type,
-                position,
-                data: { label: `New ${type.charAt(0).toUpperCase() + type.slice(1)}` }
-            };
+    const loadDemoFlow = useCallback((flowKey: keyof typeof demoFlows) => {
+        const flow = demoFlows[flowKey];
+        setNodes(flow.nodes as unknown as Node[]);
+        setEdges(flow.edges as unknown as Edge[]);
+        setExecutionLog([{
+            id: `log-${Date.now()}`,
+            timestamp: new Date(),
+            level: 'info',
+            category: 'system',
+            message: `Loaded demo: ${flow.name}`
+        }]);
+    }, [setNodes, setEdges]);
 
-            setNodes((nds) => nds.concat(newNode));
-        },
-        [setNodes]
-    );
-
-    const onNodeClick = useCallback((_: any, node: Node) => {
-        setSelectedNode(node);
-    }, []);
-
-    const handleStartSimulation = useCallback(async () => {
-        setIsRunning(true);
-        setExecutionLog([]);
-
-        if (executionMode === 'mock') {
-            // Mock simulation
-            const logs = [
-                '[00:00] Starting simulation...',
-                '[00:01] Wallet connected: 0x742d...f51B',
-                '[00:02] Session created with $50.00 budget',
-                '[00:03] Agent authorized on session',
-                '[00:04] Agent discovering VVS DEX endpoint...',
-                '[00:05] PAYMENT: x402 challenge received - $0.01',
-                '[00:06] Payment signed and submitted',
-                '[00:07] SUCCESS: Trade executed - Swapped 10 CRO for USDC',
-                '[00:08] Session balance: $49.99 remaining'
-            ];
-
-            logs.forEach((log, i) => {
-                setTimeout(() => {
-                    setExecutionLog(prev => [...prev, log]);
-                    if (i === logs.length - 1) {
-                        setIsRunning(false);
-                    }
-                }, i * 800);
-            });
-        } else {
-            // Real execution
-            const logs = [
-                '[REAL] Starting real execution...',
-                '[REAL] Connecting to wallet...',
-            ];
-
-            setExecutionLog(logs);
-
-            try {
-                // Step 1: Create session
-                setExecutionLog(prev => [...prev, '[REAL] Creating escrow session on Cronos...']);
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                setExecutionLog(prev => [...prev, '[REAL] SUCCESS: Session created - 0x1234...']);
-
-                // Step 2: Authorize agent
-                setExecutionLog(prev => [...prev, '[REAL] Authorizing agent on session...']);
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                setExecutionLog(prev => [...prev, '[REAL] SUCCESS: Agent authorized']);
-
-                // Step 3: Execute x402 payment
-                setExecutionLog(prev => [...prev, '[REAL] PAYMENT: Initiating x402 payment...']);
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                setExecutionLog(prev => [...prev, '[REAL] PAYMENT: Signed and broadcast to Cronos']);
-
-                // Step 4: Settlement
-                setExecutionLog(prev => [...prev, '[REAL] Waiting for settlement confirmation...']);
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                setExecutionLog(prev => [...prev, '[REAL] SUCCESS: Payment settled on-chain']);
-
-                // Step 5: Indexing
-                setExecutionLog(prev => [...prev, '[REAL] Indexing execution and outcome...']);
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                setExecutionLog(prev => [...prev, '[REAL] SUCCESS: Execution indexed - View in Explorer']);
-
-                setIsRunning(false);
-            } catch (error) {
-                setExecutionLog(prev => [...prev, `[REAL] ERROR: ${error}`]);
-                setIsRunning(false);
+    const connectWallet = useCallback(async () => {
+        try {
+            if (typeof window !== 'undefined' && window.ethereum) {
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                if (accounts && accounts.length > 0) {
+                    setAddress(accounts[0]);
+                    setIsConnected(true);
+                    setExecutionLog(prev => [...prev, {
+                        id: `log-${Date.now()}`,
+                        timestamp: new Date(),
+                        level: 'success',
+                        category: 'system',
+                        message: `Wallet connected: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`
+                    }]);
+                }
+            } else {
+                setExecutionLog(prev => [...prev, {
+                    id: `log-${Date.now()}`,
+                    timestamp: new Date(),
+                    level: 'error',
+                    category: 'system',
+                    message: 'No wallet detected. Please install MetaMask.'
+                }]);
             }
+        } catch (error) {
+            setExecutionLog(prev => [...prev, {
+                id: `log-${Date.now()}`,
+                timestamp: new Date(),
+                level: 'error',
+                category: 'system',
+                message: `Wallet connection failed: ${error}`
+            }]);
         }
-    }, [executionMode]);
-
-    const handlePauseSimulation = useCallback(() => {
-        setIsRunning(false);
-        setExecutionLog(prev => [...prev, '[PAUSED] Simulation paused']);
     }, []);
 
-    const handleResetSimulation = useCallback(() => {
-        setIsRunning(false);
+    const clearCanvas = useCallback(() => {
+        setNodes([]);
+        setEdges([]);
         setExecutionLog([]);
-        setNodes(nodes => nodes.map(n => ({
-            ...n,
-            data: { ...n.data, status: 'idle' }
-        })));
-    }, [setNodes]);
+        setSelectedNode(null);
+    }, [setNodes, setEdges]);
 
-    const handleExport = useCallback(() => {
-        const flow = { nodes, edges };
-        const blob = new Blob([JSON.stringify(flow, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'relay-flow.json';
-        a.click();
-        URL.revokeObjectURL(url);
-    }, [nodes, edges]);
-
-    const handleDeleteNode = useCallback(() => {
-        if (selectedNode) {
-            setNodes(nds => nds.filter(n => n.id !== selectedNode.id));
-            setEdges(eds => eds.filter(e => e.source !== selectedNode.id && e.target !== selectedNode.id));
-            setSelectedNode(null);
+    const handleExecute = useCallback(async () => {
+        if (!address && executionMode === 'real') {
+            setExecutionLog(prev => [...prev, {
+                id: `log-${Date.now()}`,
+                timestamp: new Date(),
+                level: 'error',
+                category: 'system',
+                message: 'Please connect your wallet to execute in real mode'
+            }]);
+            return;
         }
-    }, [selectedNode, setNodes, setEdges]);
+
+        setIsRunning(true);
+
+        try {
+
+            if (executionMode === 'mock') {
+                setExecutionLog(prev => [...prev, {
+                    id: `log-${Date.now()}`,
+                    timestamp: new Date(),
+                    level: 'info',
+                    category: 'system',
+                    message: 'Starting mock execution (simulated)'
+                }]);
+
+                const { MockExecutionEngine } = await import('./Playground/engine/MockExecutionEngine');
+                const mockEngine = new MockExecutionEngine(
+                    nodes as unknown as PlaygroundNode[],
+                    edges as unknown as PlaygroundEdge[],
+                    {
+                        onNodeUpdate: (nodeId, data) => {
+                            setNodes(nds => nds.map(n =>
+                                n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n
+                            ));
+                        },
+                        onEdgeUpdate: (edgeId, data) => {
+                            setEdges(eds => eds.map(e =>
+                                e.id === edgeId ? { ...e, ...data } : e
+                            ));
+                        },
+                        onLog: (entry) => {
+                            setExecutionLog(prev => [...prev, {
+                                ...entry,
+                                id: `log-${Date.now()}-${Math.random()}`,
+                                timestamp: new Date()
+                            }]);
+                        }
+                    }
+                );
+
+                await mockEngine.execute();
+
+                setExecutionLog(prev => [...prev, {
+                    id: `log-${Date.now()}`,
+                    timestamp: new Date(),
+                    level: 'success',
+                    category: 'system',
+                    message: 'Mock execution complete'
+                }]);
+
+                return;
+            }
+
+            const engine = new RealExecutionEngine({
+                nodes: nodes as unknown as PlaygroundNode[],
+                edges: edges as unknown as PlaygroundEdge[],
+                walletAddress: address || '0x0000000000000000000000000000000000000000',
+                onNodeUpdate: (nodeId, data) => {
+                    setNodes(nds => nds.map(n =>
+                        n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n
+                    ));
+                },
+                onEdgeUpdate: (edgeId, data) => {
+                    setEdges(eds => eds.map(e =>
+                        e.id === edgeId ? { ...e, ...data } : e
+                    ));
+                },
+                onLog: (entry) => {
+                    setExecutionLog(prev => [...prev, {
+                        ...entry,
+                        id: `log-${Date.now()}-${Math.random()}`,
+                        timestamp: new Date()
+                    }]);
+                }
+            });
+
+            await engine.execute();
+
+        } catch (error) {
+            setExecutionLog(prev => [...prev, {
+                id: `log-${Date.now()}`,
+                timestamp: new Date(),
+                level: 'error',
+                category: 'system',
+                message: `Execution failed: ${error}`
+            }]);
+        } finally {
+            setIsRunning(false);
+        }
+    }, [address, executionMode, nodes, edges, setNodes, setEdges]);
 
     return (
-        <div className="h-screen flex flex-col bg-white">
+        <div className="h-screen flex bg-white">
             <style>{`
                 .react-flow__attribution {
-                    display: none !important;
+                    display: none;
                 }
             `}</style>
-            {/* Header */}
-            <div className="bg-white border-b border-gray-200 px-6 py-4">
-                <div className="max-w-7xl mx-auto flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <Link to="/" className="flex items-center gap-2">
-                            <img src={logoFavicon} alt="Relay" className="h-7 w-7" />
-                            <span className="text-xl font-bold text-gray-900">Relay Playground</span>
-                        </Link>
-                        <Badge variant="outline" className="border-blue-200 text-blue-600">
-                            Beta
-                        </Badge>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setShowPalette(!showPalette)}
-                            className="border-gray-200 text-gray-700 hover:bg-gray-50"
-                        >
-                            <Box className="h-4 w-4 mr-2" />
-                            {showPalette ? 'Hide' : 'Show'} Palette
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleExport}
-                            className="border-gray-200 text-gray-700 hover:bg-gray-50"
-                        >
-                            <Download className="h-4 w-4 mr-2" />
-                            Export
-                        </Button>
-                        <Button
-                            size="sm"
-                            className="bg-gray-900 hover:bg-black text-white"
-                        >
-                            <Save className="h-4 w-4 mr-2" />
-                            Save Flow
-                        </Button>
+
+            <AnimatePresence>
+                {showPalette && (
+                    <motion.div
+                        initial={{ x: -224 }}
+                        animate={{ x: 0 }}
+                        exit={{ x: -224 }}
+                        transition={{ type: 'spring', damping: 25 }}
+                        className="w-56 bg-gray-50 border-r border-gray-200 flex flex-col"
+                    >
+                        <div className="p-4 border-b border-gray-200">
+                            <h3 className="font-semibold text-gray-900 mb-1">Node Palette</h3>
+                            <p className="text-xs text-gray-500">Drag or click to add nodes</p>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                            {nodeTemplates.map(template => (
+                                <button
+                                    key={template.type}
+                                    onClick={() => addNodeFromPalette(template.type)}
+                                    className="w-full p-3 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:shadow-sm transition-all text-left group"
+                                >
+                                    <div className="font-medium text-sm text-gray-900 group-hover:text-blue-600 mb-1">
+                                        {template.label}
+                                    </div>
+                                    <p className="text-xs text-gray-500">{template.description}</p>
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="p-3 border-t border-gray-200 space-y-2">
+                            <h4 className="text-xs font-semibold text-gray-700 mb-2">Demo Flows</h4>
+                            {Object.entries(demoFlows).map(([key, flow]) => (
+                                <button
+                                    key={key}
+                                    onClick={() => loadDemoFlow(key as keyof typeof demoFlows)}
+                                    className="w-full p-2 text-left text-xs bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
+                                >
+                                    <div className="font-medium text-blue-900">{flow.name}</div>
+                                    <div className="text-blue-600">{flow.description}</div>
+                                </button>
+                            ))}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <div className="flex-1 flex flex-col">
+                <div className="bg-white border-b border-gray-200 px-6 py-3 z-10">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <Link to="/" className="flex items-center gap-2">
+                                <img src={logoFavicon} alt="Relay" className="h-6 w-6" />
+                                <span className="text-lg font-bold text-gray-900">Interactive Playground</span>
+                            </Link>
+                            <Badge variant="outline" className="border-green-200 text-green-600">
+                                Testnet Sandbox
+                            </Badge>
+                            {executionMode === 'real' && isConnected && (
+                                <Badge variant="default" className="bg-green-600">
+                                    <div className="w-2 h-2 bg-white rounded-full mr-1 animate-pulse" />
+                                    Live
+                                </Badge>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {!address ? (
+                                <Button
+                                    variant="default"
+                                    size="sm"
+                                    onClick={connectWallet}
+                                >
+                                    <WalletIcon className="h-4 w-4 mr-1" />
+                                    Connect Wallet
+                                </Button>
+                            ) : (
+                                <Badge variant="outline" className="font-mono text-xs">
+                                    {address.slice(0, 6)}...{address.slice(-4)}
+                                </Badge>
+                            )}
+                            <Button variant="outline" size="sm" onClick={() => setShowPalette(!showPalette)}>
+                                {showPalette ? 'Hide' : 'Show'} Palette
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => setShowInspector(!showInspector)}>
+                                {showInspector ? <EyeOff className="h-4 w-4 mr-1" /> : <Eye className="h-4 w-4 mr-1" />}
+                                Inspector
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => setShowActivity(!showActivity)}>
+                                <Activity className="h-4 w-4 mr-1" />
+                                Activity
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={clearCanvas}>
+                                <Trash2 className="h-4 w-4 mr-1" />
+                                Clear
+                            </Button>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            {/* Canvas */}
-            <div className="flex-1 flex">
-                {/* Node Palette */}
-                <AnimatePresence>
-                    {showPalette && (
-                        <motion.div
-                            initial={{ x: -280, opacity: 0 }}
-                            animate={{ x: 0, opacity: 1 }}
-                            exit={{ x: -280, opacity: 0 }}
-                            className="w-72 bg-gray-50 border-r border-gray-200 p-4 overflow-y-auto"
+                <div className="flex-1 flex">
+                    <div className="flex-1 relative">
+                        <ReactFlow
+                            nodes={nodes}
+                            edges={edges}
+                            onNodesChange={onNodesChange}
+                            onEdgesChange={onEdgesChange}
+                            onConnect={onConnect}
+                            onNodeClick={onNodeClick}
+                            nodeTypes={nodeTypes}
+                            fitView
                         >
-                            <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                                <Box className="h-5 w-5" />
-                                Node Palette
-                            </h3>
-                            <div className="space-y-2">
-                                {nodePalette.map((item) => {
-                                    const Icon = item.icon;
-                                    return (
-                                        <motion.div
-                                            key={item.type}
-                                            draggable
-                                            onDragStart={(e: any) => {
-                                                e.dataTransfer.setData('application/reactflow', item.type);
-                                            }}
-                                            whileHover={{ scale: 1.02 }}
-                                            whileTap={{ scale: 0.98 }}
-                                            className="cursor-grab active:cursor-grabbing p-3 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all"
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className={`p-2 rounded-lg ${item.color}`}>
-                                                    <Icon className="h-4 w-4 text-white" />
-                                                </div>
-                                                <div>
-                                                    <div className="font-medium text-sm text-gray-800">{item.label}</div>
-                                                    <div className="text-xs text-gray-500">{item.description}</div>
-                                                </div>
-                                            </div>
-                                        </motion.div>
-                                    );
-                                })}
+                            <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+                            <Controls />
+                        </ReactFlow>
+
+                        <div className="absolute top-4 right-4 bg-white rounded-lg shadow-lg p-4 space-y-3 z-10">
+                            <div>
+                                <div className="text-xs font-semibold text-gray-700 mb-2">Execution Mode</div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setExecutionMode('mock')}
+                                        className={`px-3 py-1 text-xs rounded ${executionMode === 'mock'
+                                            ? 'bg-gray-800 text-white'
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                            }`}
+                                    >
+                                        Mock
+                                    </button>
+                                    <button
+                                        onClick={() => setExecutionMode('real')}
+                                        className={`px-3 py-1 text-xs rounded ${executionMode === 'real'
+                                            ? 'bg-green-600 text-white'
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                            }`}
+                                    >
+                                        Real
+                                    </button>
+                                </div>
+                                {executionMode === 'mock' && (
+                                    <p className="text-xs text-gray-500 mt-1">Simulated execution for testing</p>
+                                )}
+                                {executionMode === 'real' && (
+                                    <p className="text-xs text-green-600 mt-1">Real blockchain transactions</p>
+                                )}
                             </div>
 
-                            {/* Selected Node Info */}
-                            {selectedNode && (
-                                <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                                    <h4 className="font-medium text-sm text-gray-800 mb-3">Selected Node</h4>
-                                    <div className="space-y-2 text-sm">
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-500">Type:</span>
-                                            <span className="font-medium capitalize">{selectedNode.type}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-500">ID:</span>
-                                            <span className="font-mono text-xs">{selectedNode.id.slice(0, 12)}...</span>
-                                        </div>
-                                    </div>
-                                    <Button
-                                        variant="destructive"
-                                        size="sm"
-                                        onClick={handleDeleteNode}
-                                        className="w-full mt-3"
-                                    >
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                        Delete Node
-                                    </Button>
-                                </div>
-                            )}
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+                            <Button
+                                onClick={handleExecute}
+                                disabled={isRunning || nodes.length === 0}
+                                className="w-full"
+                                size="sm"
+                            >
+                                <Play className="h-4 w-4 mr-1" />
+                                Execute
+                            </Button>
 
-                {/* Flow Canvas */}
-                <div ref={reactFlowWrapper} className="flex-1">
-                    <ReactFlow
-                        nodes={nodes}
-                        edges={edges}
-                        onNodesChange={onNodesChange}
-                        onEdgesChange={onEdgesChange}
-                        onConnect={onConnect}
-                        onDrop={onDrop}
-                        onDragOver={onDragOver}
-                        onNodeClick={onNodeClick}
-                        nodeTypes={nodeTypes}
-                        fitView
-                        className="bg-white"
-                    >
-                        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#e5e7eb" />
-                        <Controls className="bg-white shadow-lg rounded-lg border border-gray-200" />
-                        <MiniMap
-                            className="!bg-white shadow-lg rounded-lg border border-gray-200"
-                            nodeColor={(n) => {
-                                switch (n.type) {
-                                    case 'agent': return '#3b82f6';
-                                    case 'endpoint': return '#8b5cf6';
-                                    case 'session': return '#10b981';
-                                    case 'wallet': return '#f59e0b';
-                                    case 'escrow': return '#06b6d4';
-                                    case 'payment': return '#ec4899';
-                                    default: return '#6b7280';
-                                }
-                            }}
-                        />
+                            <div className="text-xs text-gray-500 space-y-1">
+                                <div>Nodes: {nodes.length}</div>
+                                <div>Edges: {edges.length}</div>
+                                <div>Events: {executionLog.length}</div>
+                            </div>
+                        </div>
+                    </div>
 
-                        {/* Simulation Panel */}
-                        <Panel position="top-right" className="m-4">
-                            <SimulationPanel
-                                isRunning={isRunning}
-                                onStart={handleStartSimulation}
-                                onPause={handlePauseSimulation}
-                                onReset={handleResetSimulation}
-                                executionLog={executionLog}
-                                executionMode={executionMode}
-                                onModeChange={setExecutionMode}
+                    <AnimatePresence>
+                        {showInspector && selectedNode && (
+                            <InspectorPanel
+                                node={selectedNode}
+                                onClose={() => setShowInspector(false)}
                             />
-                        </Panel>
-                    </ReactFlow>
+                        )}
+                    </AnimatePresence>
+
+                    <AnimatePresence>
+                        {showActivity && (
+                            <ActivityStream
+                                logs={executionLog}
+                                onClose={() => setShowActivity(false)}
+                            />
+                        )}
+                    </AnimatePresence>
                 </div>
             </div>
         </div>
     );
+}
+
+function createNodeData(nodeType: string): any {
+    const baseData = {
+        label: `New ${nodeType}`,
+        status: 'idle' as const,
+        executionMode: 'real' as const,
+        createdAt: new Date(),
+        updatedAt: new Date()
+    };
+
+    switch (nodeType) {
+        case 'wallet':
+            return {
+                ...baseData,
+                type: 'wallet',
+                address: '0x0000000000000000000000000000000000000000',
+                balance: 0,
+                chainId: 25,
+                pendingTransactions: []
+            };
+        case 'session':
+            return {
+                ...baseData,
+                type: 'session',
+                sessionId: `0x${Math.random().toString(16).slice(2, 18)}`,
+                ownerAddress: '0x0000000000000000000000000000000000000000',
+                maxSpend: 100,
+                deposited: 0,
+                released: 0,
+                remaining: 0,
+                expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                authorizedAgents: [],
+                events: [],
+                isActive: false
+            };
+        case 'agent':
+            return {
+                ...baseData,
+                type: 'agent',
+                agentType: 'Generic Agent',
+                tools: [],
+                costIncurred: 0,
+                paymentsSent: [],
+                paymentsReceived: [],
+                toolCalls: []
+            };
+        case 'x402_gate':
+            return {
+                ...baseData,
+                type: 'x402_gate',
+                price: 0.01,
+                asset: 'USDC',
+                recipientAddress: '0x0000000000000000000000000000000000000000',
+                paymentStatus: 'pending' as const
+            };
+        case 'endpoint':
+            return {
+                ...baseData,
+                type: 'endpoint',
+                url: 'https://api.example.com',
+                method: 'GET',
+                x402Protected: false,
+                responseTime: 0,
+                successRate: 0,
+                callHistory: []
+            };
+        case 'indexer':
+            return {
+                ...baseData,
+                type: 'indexer',
+                blockHeight: 0,
+                latency: 0,
+                eventStream: [],
+                dataFreshness: 'stale' as const,
+                lastUpdate: new Date()
+            };
+        case 'x402_step1':
+            return {
+                ...baseData,
+                label: 'Step 1: Request',
+                type: 'x402_step1',
+                config: {
+                    url: 'https://api.relaycore.xyz/resource',
+                    method: 'GET'
+                }
+            };
+        case 'x402_step2':
+            return {
+                ...baseData,
+                label: 'Step 2: Challenge',
+                type: 'x402_step2'
+            };
+        case 'x402_step3':
+            return {
+                ...baseData,
+                label: 'Step 3: Authorize',
+                type: 'x402_step3'
+            };
+        case 'x402_step4':
+            return {
+                ...baseData,
+                label: 'Step 4: Submit',
+                type: 'x402_step4'
+            };
+        case 'x402_step5':
+            return {
+                ...baseData,
+                label: 'Step 5: Verify',
+                type: 'x402_step5'
+            };
+        case 'x402_step6':
+            return {
+                ...baseData,
+                label: 'Step 6: Settle',
+                type: 'x402_step6'
+            };
+        case 'x402_step7':
+            return {
+                ...baseData,
+                label: 'Step 7: Confirm',
+                type: 'x402_step7'
+            };
+        case 'x402_step8':
+            return {
+                ...baseData,
+                label: 'Step 8: Retry',
+                type: 'x402_step8'
+            };
+        case 'x402_step9':
+            return {
+                ...baseData,
+                label: 'Step 9: Deliver',
+                type: 'x402_step9'
+            };
+        case 'service_agent_discovery':
+            return {
+                ...baseData,
+                label: 'Agent Discovery',
+                type: 'service_agent_discovery',
+                config: {
+                    capability: 'trading',
+                    category: 'defi',
+                    minReputation: 80
+                }
+            };
+        case 'service_session_manager':
+            return {
+                ...baseData,
+                label: 'Session Manager',
+                type: 'service_session_manager',
+                config: {
+                    maxSpend: 100,
+                    duration: 24
+                }
+            };
+        case 'service_dex_aggregator':
+            return {
+                ...baseData,
+                label: 'DEX Aggregator',
+                type: 'service_dex_aggregator',
+                config: {
+                    tokenIn: 'USDC',
+                    tokenOut: 'CRO',
+                    amount: '100'
+                }
+            };
+        case 'service_rwa_settlement':
+            return {
+                ...baseData,
+                label: 'RWA Settlement',
+                type: 'service_rwa_settlement',
+                config: {
+                    serviceType: 'compliance_check',
+                    slaMaxLatency: 5000
+                }
+            };
+        case 'service_meta_agent':
+            return { ...baseData, label: 'Meta Agent', type: 'service_meta_agent', config: { task: 'Execute complex task', maxAgents: 5 } };
+        case 'service_payment_indexer':
+            return { ...baseData, label: 'Payment Indexer', type: 'service_payment_indexer', config: { fromBlock: 0, toBlock: 'latest' } };
+        case 'service_agent_registry':
+            return { ...baseData, label: 'Agent Registry', type: 'service_agent_registry', config: { agentName: 'New Agent', capabilities: ['trading'] } };
+        case 'service_escrow':
+            return { ...baseData, label: 'Escrow Agent', type: 'service_escrow', config: { amount: 100, recipient: '0x...' } };
+        case 'service_trade_router':
+            return { ...baseData, label: 'Trade Router', type: 'service_trade_router', config: { tokenIn: 'USDC', tokenOut: 'CRO', amountIn: '100' } };
+        case 'service_pyth_oracle':
+            return { ...baseData, label: 'Pyth Oracle', type: 'service_pyth_oracle', config: { symbol: 'CRO/USD' } };
+        case 'service_agent_indexer':
+            return { ...baseData, label: 'Agent Indexer', type: 'service_agent_indexer', config: { agentAddress: '0x...' } };
+        case 'service_reputation_indexer':
+            return { ...baseData, label: 'Reputation Indexer', type: 'service_reputation_indexer', config: { agentAddress: '0x...' } };
+        case 'service_rwa_state_indexer':
+            return { ...baseData, label: 'RWA State Indexer', type: 'service_rwa_state_indexer', config: { requestId: 'rwa_123' } };
+        case 'service_identity':
+            return { ...baseData, label: 'Identity Resolution', type: 'service_identity', config: { walletAddress: '0x...' } };
+        case 'service_social_identity':
+            return { ...baseData, label: 'Social Identity', type: 'service_social_identity', config: { platform: 'twitter', platformId: 'user123' } };
+        case 'service_cronos_sdk':
+            return { ...baseData, label: 'Cronos SDK', type: 'service_cronos_sdk', config: { operation: 'getBalance' } };
+        case 'service_crypto_mcp':
+            return { ...baseData, label: 'Crypto.com MCP', type: 'service_crypto_mcp', config: { symbol: 'CRO' } };
+        case 'service_well_known':
+            return { ...baseData, label: 'Well-Known Service', type: 'service_well_known', config: { baseUrl: 'https://agent.example.com' } };
+        case 'service_health_check':
+            return { ...baseData, label: 'Health Check', type: 'service_health_check', config: {} };
+        case 'service_observability':
+            return { ...baseData, label: 'Observability', type: 'service_observability', config: { metric: 'requests', timeRange: '1h' } };
+        case 'service_task_store':
+            return { ...baseData, label: 'Task Store', type: 'service_task_store', config: { task: 'Process data', priority: 'high' } };
+        case 'service_rwa_proof':
+            return { ...baseData, label: 'RWA Proof', type: 'service_rwa_proof', config: { requestId: 'rwa_123', proof: '0x...' } };
+        case 'util_logger':
+            return { ...baseData, label: 'Logger', type: 'util_logger', config: {} };
+        case 'util_inspector':
+            return { ...baseData, label: 'Inspector', type: 'util_inspector', config: {} };
+        case 'util_delay':
+            return { ...baseData, label: 'Delay', type: 'util_delay', config: { delayMs: 1000 } };
+        case 'util_conditional':
+            return { ...baseData, label: 'Conditional', type: 'util_conditional', config: { condition: 'value > 0' } };
+        default:
+            return baseData;
+    }
 }
 
 export default Playground;

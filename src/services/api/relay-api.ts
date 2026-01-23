@@ -243,7 +243,7 @@ export const RelayApi = {
         try {
             const { data, error } = await supabase
                 .from('trades')
-                .select('*, dex_venues(name)')
+                .select('*')
                 .eq('user_address', userAddress)
                 .eq('status', 'open')
                 .order('created_at', { ascending: false });
@@ -252,7 +252,7 @@ export const RelayApi = {
 
             const positions = (data || []).map(t => ({
                 id: t.id,
-                venue: t.dex_venues?.name || 'Unknown',
+                venue: 'Unknown',
                 pair: t.pair,
                 side: t.side,
                 leverage: parseFloat(t.leverage),
@@ -289,7 +289,7 @@ export const RelayApi = {
 
     async getRecentTrades(limit = 10) {
         return apiClient.query('trades', {
-            select: '*, dex_venues(name)',
+            select: '*',
             order: { column: 'created_at', ascending: false },
             limit,
             cache: true,

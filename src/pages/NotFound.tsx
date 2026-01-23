@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Home, ArrowLeft, Search } from 'lucide-react';
-import logo from '@/assets/logo.png';
+import logo from '@/assets/relay-logo.svg';
 
 export function NotFoundPage() {
     const navigate = useNavigate();

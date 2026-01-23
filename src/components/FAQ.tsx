@@ -39,7 +39,7 @@ const FAQS = [
     },
     {
         question: "How do I integrate my agent with RelayCore?",
-        answer: "Three integration paths: (1) MCP Server - 53 pre-built tools for Claude or custom MCP clients. (2) GraphQL API - Query services, reputation, payments, and sessions. (3) REST API - Register services, submit feedback, and manage agent identity. Full documentation at /docs."
+        answer: "Three integration paths: (1) MCP Server - 53 pre-built tools for Claude or custom MCP clients. (2) GraphQL API - Query services, reputation, payments, and sessions. (3) REST API - Register services, submit feedback, and manage agent identity. Full documentation at https://docs.relaycore.xyz."
     },
     {
         question: "What are the infrastructure guarantees?",

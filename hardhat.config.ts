@@ -7,7 +7,7 @@ dotenv.config();
 
 const DEPLOYER_PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000001";
 
-const config: HardhatUserConfig = {
+const config = {
     solidity: {
         version: "0.8.20",
         settings: {
@@ -52,11 +52,11 @@ const config: HardhatUserConfig = {
     etherscan: {
         apiKey: {
             // Cronos zkEVM explorer
-            cronosZkevmTestnet: process.env.CRONOS_ZKEVM_API_KEY || "no-api-key-needed",
-            cronosZkevmMainnet: process.env.CRONOS_ZKEVM_API_KEY || "no-api-key-needed",
-            // Cronos EVM explorer
-            cronosTestnet: process.env.CRONOS_EXPLORER_API_KEY || "lXOKToGm0oIKGwSosA2mQFuujGHKgzwR",
-            cronosMainnet: process.env.CRONOS_EXPLORER_API_KEY || "lXOKToGm0oIKGwSosA2mQFuujGHKgzwR",
+            cronosZkevmTestnet: process.env.CRONOS_ZKEVM_API_KEY || "",
+            cronosZkevmMainnet: process.env.CRONOS_ZKEVM_API_KEY || "",
+            // Cronos EVM explorer - use separate keys for testnet and mainnet
+            cronosTestnet: process.env.CRONOS_EXPLORER_API_KEY_TESTNET || process.env.CRONOS_EXPLORER_API_KEY || "",
+            cronosMainnet: process.env.CRONOS_EXPLORER_API_KEY_MAINNET || process.env.CRONOS_EXPLORER_API_KEY || "",
         },
         customChains: [
             {

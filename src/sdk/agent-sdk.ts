@@ -8,12 +8,13 @@
  * - Submit feedback
  */
 
-import { supabase } from '@/lib/supabase';
-import { facilitatorService } from '@/services/x402/facilitator-service';
-import type { PaymentRequirements } from '@crypto.com/facilitator-client';
-import { uploadAgentMetadataToIPFS, buildAgentMetadata } from '@/lib/ipfs-service';
-import { registerAgent as registerAgentOnChain } from '@/lib/erc8004-client';
+import { createSupabaseClient } from './lib/supabase';
+import { FacilitatorClient } from './lib/facilitator';
+import type { PaymentRequirements, CronosNetwork } from '@crypto.com/facilitator-client';
+import { uploadAgentMetadataToIPFS, buildAgentMetadata } from './lib/ipfs';
+import { registerAgent as registerAgentOnChain } from './lib/erc8004';
 import { ethers } from 'ethers';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 // SDK Configuration
 export interface SDKConfig {
@@ -21,6 +22,11 @@ export interface SDKConfig {
     walletAddress: string;      // Agent's wallet address
     rpcUrl?: string;            // Cronos RPC URL
     baseUrl?: string;           // Relay Core API URL (default: localhost:4000)
+    supabaseUrl?: string;
+    supabaseKey?: string;
+    contracts?: {
+        identityRegistry?: string;
+    };
 }
 
 export interface AgentService {
@@ -54,6 +60,8 @@ export interface RegisterAgentResult {
 export class AgentSDK {
     private config: SDKConfig;
     private headers: Record<string, string>;
+    private supabase: SupabaseClient | null = null;
+    private facilitator: FacilitatorClient;
 
     constructor(config: SDKConfig) {
         this.config = {
@@ -70,6 +78,16 @@ export class AgentSDK {
         if (config.apiKey) {
             this.headers['x-api-key'] = config.apiKey;
         }
+
+        // Initialize Supabase if config provided
+        if (config.supabaseUrl && config.supabaseKey) {
+            this.supabase = createSupabaseClient(config.supabaseUrl, config.supabaseKey);
+        }
+
+        // Initialize Facilitator
+        // Determining network from RPC URL is heuristics, might be better to explicitly ask for network
+        // For now defaulting to testnet
+        this.facilitator = new FacilitatorClient('cronos-testnet' as CronosNetwork);
     }
 
     /**
@@ -90,13 +108,15 @@ export class AgentSDK {
             pricePerRequest: service.pricePerRequest,
         });
 
-        const ipfsUri = await uploadAgentMetadataToIPFS(metadata);
+        // Use base URL for IPFS upload proxy
+        const ipfsUri = await uploadAgentMetadataToIPFS(metadata, this.config.baseUrl || 'http://localhost:4000');
 
         // Register on-chain
         const { agentId, txHash } = await registerAgentOnChain(
             ipfsUri,
             this.config.walletAddress,
-            signer
+            signer,
+            this.config.contracts?.identityRegistry || '0x4b697D8ABC0e3dA0086011222755d9029DBB9C43'
         );
 
         // Also save to Supabase for discoverability
@@ -133,7 +153,12 @@ export class AgentSDK {
         }
 
         // Fallback to direct Supabase
-        const { error } = await supabase.from('agent_activity').insert({
+        if (!this.supabase) {
+            console.warn('Supabase not configured. Off-chain service registration skiped.');
+            return;
+        }
+
+        const { error } = await this.supabase.from('agent_activity').insert({
             agent_address: this.config.walletAddress,
             activity_type: 'service_registered',
             metadata: {
@@ -171,7 +196,11 @@ export class AgentSDK {
         }
 
         // Fallback to direct Supabase query
-        const { data: activities, error: actError } = await supabase
+        if (!this.supabase) {
+            throw new Error('Supabase not configured. Cannot discover agents without API Key or Supabase credentials.');
+        }
+
+        const { data: activities, error: actError } = await this.supabase
             .from('agent_activity')
             .select('agent_address, metadata')
             .eq('activity_type', 'service_registered')
@@ -181,9 +210,9 @@ export class AgentSDK {
 
         if (!activities || activities.length === 0) return [];
 
-        const agentAddresses = [...new Set(activities.map(a => a.agent_address))];
+        const agentAddresses = [...new Set(activities.map((a: any) => a.agent_address))];
 
-        const { data: reputations, error: repError } = await supabase
+        const { data: reputations, error: repError } = await this.supabase
             .from('agent_reputation')
             .select('*')
             .in('agent_address', agentAddresses)
@@ -194,24 +223,24 @@ export class AgentSDK {
         const profiles: AgentProfile[] = [];
 
         for (const address of agentAddresses) {
-            const agentActivities = activities.filter(a => a.agent_address === address);
-            const reputation = reputations?.find(r => r.agent_address === address);
+            const agentActivities = activities.filter((a: any) => a.agent_address === address);
+            const reputation = reputations?.find((r: any) => r.agent_address === address);
 
-            const services: AgentService[] = agentActivities.map(a => ({
+            const services: AgentService[] = agentActivities.map((a: any) => ({
                 serviceId: a.metadata.serviceId,
                 name: a.metadata.name,
                 description: a.metadata.description,
                 serviceType: a.metadata.serviceType,
                 pricePerRequest: a.metadata.pricePerRequest,
                 endpoint: a.metadata.endpoint,
-                agentAddress: address,
+                agentAddress: address as string,
             }));
 
             const total = (reputation?.successful_transactions || 0) + (reputation?.failed_transactions || 0);
             const successRate = total > 0 ? (reputation?.successful_transactions || 0) / total : 0;
 
             profiles.push({
-                address,
+                address: address as string,
                 services,
                 reputationScore: reputation?.reputation_score || 0,
                 successRate,
@@ -225,7 +254,11 @@ export class AgentSDK {
      * Get agent reputation
      */
     async getReputation(address: string): Promise<number> {
-        const { data, error } = await supabase
+        if (!this.supabase) {
+            return 0; // Or throw error
+        }
+
+        const { data, error } = await this.supabase
             .from('agent_reputation')
             .select('reputation_score')
             .eq('agent_address', address)
@@ -248,14 +281,14 @@ export class AgentSDK {
         amount: string;
         signer: any;
     }): Promise<{ paymentId: string; txHash: string }> {
-        const paymentRequirements = facilitatorService.generatePaymentRequirements({
+        const paymentRequirements = this.facilitator.generatePaymentRequirements({
             merchantAddress: params.agentAddress,
             amount: params.amount,
             resourceUrl: `https://relaycore.xyz/api/services/${params.serviceId}`,
             description: `Payment for service ${params.serviceId}`,
         });
 
-        const facilitator = facilitatorService.getFacilitator();
+        const facilitator = this.facilitator.getFacilitator();
         const now = Math.floor(Date.now() / 1000);
         const paymentHeader = await facilitator.generatePaymentHeader({
             to: params.agentAddress,
@@ -266,7 +299,7 @@ export class AgentSDK {
             validBefore: now + 300,
         });
 
-        const result = await facilitatorService.settlePayment({
+        const result = await this.facilitator.settlePayment({
             paymentHeader,
             paymentRequirements,
         });
@@ -292,7 +325,7 @@ export class AgentSDK {
         if (response.status === 402) {
             await response.json();
 
-            const facilitator = facilitatorService.getFacilitator();
+            const facilitator = this.facilitator.getFacilitator();
             const now = Math.floor(Date.now() / 1000);
             const paymentHeader = await facilitator.generatePaymentHeader({
                 to: params.paymentRequirements.payTo,
@@ -303,7 +336,7 @@ export class AgentSDK {
                 validBefore: now + (params.paymentRequirements.maxTimeoutSeconds || 300),
             });
 
-            const result = await facilitatorService.settlePayment({
+            const result = await this.facilitator.settlePayment({
                 paymentHeader,
                 paymentRequirements: params.paymentRequirements,
             });

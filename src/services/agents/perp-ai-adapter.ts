@@ -86,7 +86,7 @@ export const perpAIQuoteAgent = agentRegistry.register(
             latency_class: 'low',
             categories: ['trading', 'defi', 'perpetuals'],
             tags: ['quote', 'price', 'leverage', 'perps'],
-            docs_url: 'https://docs.relaycore.io/agents/perp-ai-quote',
+            docs_url: 'https://docs.relaycore.xyz/agents/perp-ai-quote',
         },
     },
     async (input) => {
@@ -210,7 +210,7 @@ export const perpAITradeAgent = agentRegistry.register(
             latency_class: 'medium',
             categories: ['trading', 'defi', 'perpetuals', 'execution'],
             tags: ['trade', 'execute', 'leverage', 'perps', 'dex'],
-            docs_url: 'https://docs.relaycore.io/agents/perp-ai-trade',
+            docs_url: 'https://docs.relaycore.xyz/agents/perp-ai-trade',
         },
     },
     async (input) => {
@@ -301,7 +301,7 @@ export const perpAIVenuesAgent = agentRegistry.register(
             latency_class: 'low',
             categories: ['trading', 'defi', 'research'],
             tags: ['venues', 'dex', 'rankings', 'reputation'],
-            docs_url: 'https://docs.relaycore.io/agents/perp-ai-venues',
+            docs_url: 'https://docs.relaycore.xyz/agents/perp-ai-venues',
         },
     },
     async (input) => {

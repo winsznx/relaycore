@@ -1,25 +1,31 @@
 /**
- * RWA Services Page - Phase 9 Enhanced
+ * RWA Services Page - Production Complete
  * 
  * Complete RWA asset management UI:
- * - Asset minting with handoff
- * - Lifecycle state visualization
+ * - Asset minting with EIP-712 signing
+ * - State machine lifecycle visualization
+ * - x402 payment enforcement
  * - Settlement tracking
  * - Portfolio overview
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Building2, CheckCircle2, XCircle, RefreshCw,
     FileCheck, ArrowRight, DollarSign, Plus,
-    Box, TrendingUp, CreditCard, Eye, X, User, Activity
+    Box, TrendingUp, CreditCard, Eye, X, User, Activity, Wallet
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
+import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
+import { BrowserProvider } from 'ethers';
+import { RWAStateMachine } from '@/components/RWAStateMachine';
+import { useUserSessions, getAvailableBalance, formatSessionDisplay } from '@/lib/useUserSessions';
+import { formatUSDCWithLabel, shortenAddress } from '@/lib/formatters';
 
 // ============================================
 // INTERFACES
@@ -42,7 +48,7 @@ interface RWARequest {
     id: string;
     request_id: string;
     service_id: string;
-    session_id: number;
+    session_id: string;
     agent_address: string;
     price: string;
     status: string;
@@ -98,18 +104,55 @@ function MintAssetModal({
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [value, setValue] = useState('');
+    const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+
+    const { address: walletAddress } = useAppKitAccount();
+    const { sessions, loading: sessionsLoading } = useUserSessions(walletAddress || null);
+
+    // Calculate minting fee (0.1% of asset value, min 0.01 USDC)
+    const calculatedFee = useMemo(() => {
+        const assetValue = parseFloat(value) || 0;
+        return Math.max(0.01, assetValue * 0.001).toFixed(4);
+    }, [value]);
+
+    // Get selected session and available balance
+    const selectedSession = useMemo(() => {
+        return sessions.find(s => s.session_id === selectedSessionId) || null;
+    }, [sessions, selectedSessionId]);
+
+    const availableBalance = useMemo(() => {
+        return selectedSession ? getAvailableBalance(selectedSession) : 0;
+    }, [selectedSession]);
+
+    const hasInsufficientBalance = useMemo(() => {
+        if (!selectedSessionId) return false;
+        return parseFloat(calculatedFee) > availableBalance;
+    }, [selectedSessionId, calculatedFee, availableBalance]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!name.trim() || !value.trim()) return;
 
+        if (hasInsufficientBalance) {
+            alert(`Insufficient session balance! Need ${calculatedFee} USDC but only ${availableBalance.toFixed(4)} USDC available.`);
+            return;
+        }
+
         setLoading(true);
         try {
-            await onMint({ type, name, description, value, currency: 'USDC' });
+            await onMint({
+                type,
+                name,
+                description,
+                value,
+                currency: 'USDC',
+                sessionId: selectedSessionId
+            });
             setName('');
             setDescription('');
             setValue('');
+            setSelectedSessionId(null);
             onClose();
         } finally {
             setLoading(false);
@@ -198,7 +241,7 @@ function MintAssetModal({
                     {/* Value */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Value (USDC)
+                            Asset Value (USDC)
                         </label>
                         <Input
                             type="number"
@@ -208,7 +251,78 @@ function MintAssetModal({
                             placeholder="1000000.00"
                             required
                         />
+                        <p className="text-xs text-gray-500 mt-1">
+                            Total value of the asset being tokenized
+                        </p>
                     </div>
+
+                    {/* Session Selector */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Payment Session (Optional)
+                        </label>
+                        <select
+                            value={selectedSessionId || ''}
+                            onChange={(e) => setSelectedSessionId(e.target.value || null)}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                            disabled={sessionsLoading}
+                        >
+                            <option value="">Pay directly (no session)</option>
+                            {sessions.map(session => (
+                                <option key={session.session_id} value={session.session_id}>
+                                    {formatSessionDisplay(session)}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">
+                            {sessionsLoading ? 'Loading sessions...' :
+                                sessions.length === 0 ? 'No active sessions. Create one in x402 Sessions page.' :
+                                    'Select a session to pay the minting fee from your session budget'}
+                        </p>
+                        {selectedSession && (
+                            <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-200">
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-gray-600">Available Balance:</span>
+                                    <span className="font-semibold text-gray-900">{availableBalance.toFixed(4)} USDC</span>
+                                </div>
+                                <div className="flex justify-between text-xs mt-1">
+                                    <span className="text-gray-600">Minting Fee:</span>
+                                    <span className="font-semibold text-gray-900">{calculatedFee} USDC</span>
+                                </div>
+                                <div className="flex justify-between text-xs mt-1 pt-1 border-t border-gray-300">
+                                    <span className="text-gray-600">After Minting:</span>
+                                    <span className={`font-bold ${hasInsufficientBalance ? 'text-red-600' : 'text-green-600'}`}>
+                                        {hasInsufficientBalance ? 'INSUFFICIENT!' : `${(availableBalance - parseFloat(calculatedFee)).toFixed(4)} USDC`}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+                        {hasInsufficientBalance && (
+                            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
+                                <p className="text-xs text-red-700">
+                                    ⚠️ Insufficient balance! Need {calculatedFee} USDC but only {availableBalance.toFixed(4)} USDC available.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Minting Fee Display */}
+                    {value && parseFloat(value) > 0 && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm font-medium text-blue-900">Minting Fee</p>
+                                    <p className="text-xs text-blue-700 mt-0.5">
+                                        0.1% of asset value (minimum 0.01 USDC)
+                                    </p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-lg font-bold text-blue-900">{calculatedFee} USDC</p>
+                                    <p className="text-xs text-blue-700">via x402</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Actions */}
                     <div className="flex gap-3 pt-4">
@@ -371,9 +485,15 @@ function AssetDetailModal({
                                                 By: {event.actor.slice(0, 8)}...
                                             </p>
                                             {event.txHash && (
-                                                <p className="text-xs text-blue-600 font-mono mt-1">
-                                                    Tx: {event.txHash.slice(0, 16)}...
-                                                </p>
+                                                <a
+                                                    href={`https://explorer.cronos.org/testnet/tx/${event.txHash}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs text-blue-600 hover:text-blue-800 font-mono mt-1 flex items-center gap-1 hover:underline"
+                                                >
+                                                    <span>Tx: {event.txHash.slice(0, 16)}...</span>
+                                                    <ArrowRight className="w-3 h-3" />
+                                                </a>
                                             )}
                                         </div>
                                     </motion.div>
@@ -399,7 +519,12 @@ export default function RWAServices() {
     const [showMintModal, setShowMintModal] = useState(false);
     const [selectedAsset, setSelectedAsset] = useState<RWAAsset | null>(null);
     const [assetEvents, setAssetEvents] = useState<LifecycleEvent[]>([]);
-    const [activeTab, setActiveTab] = useState<'assets' | 'settlements'>('assets');
+    const [activeTab, setActiveTab] = useState<'assets' | 'state_machine' | 'settlements'>('assets');
+    const [selectedRWAId, setSelectedRWAId] = useState<string | null>(null);
+
+    // Wallet connection hooks for production-grade signing
+    const { address: walletAddress } = useAppKitAccount();
+    const { walletProvider } = useAppKitProvider('eip155');
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -464,15 +589,101 @@ export default function RWAServices() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     ...data,
-                    owner: '0x742d35Cc6634C0532925a3b844Bc454e4438f51B' // Demo address
+                    owner: walletAddress || '0x742d35Cc6634C0532925a3b844Bc454e4438f51B'
                 })
             });
 
-            if (response.ok) {
-                await loadData();
+            if (!response.ok) {
+                throw new Error('Failed to initiate minting');
             }
+
+            const result = await response.json();
+            const { assetId, handoffData, mintingFee } = result;
+
+            if (handoffData) {
+                await handleHandoffSigning(assetId, handoffData, mintingFee);
+            }
+
+            await loadData();
         } catch (err) {
             console.error('Mint failed:', err);
+            alert(`Minting failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+    };
+
+    const handleHandoffSigning = async (assetId: string, handoffData: any, mintingFee: string) => {
+        if (!walletAddress || !walletProvider) {
+            alert('Please connect your wallet first');
+            return;
+        }
+
+        try {
+            // Type assertion for wallet provider
+            const ethersProvider = new BrowserProvider(walletProvider as any);
+            const signer = await ethersProvider.getSigner();
+
+            const domain = {
+                name: 'Relay Core RWA',
+                version: '1',
+                chainId: await signer.provider.getNetwork().then(n => Number(n.chainId)),
+                verifyingContract: '0x0000000000000000000000000000000000000000'
+            };
+
+            const types = {
+                RWAMint: [
+                    { name: 'action', type: 'string' },
+                    { name: 'assetId', type: 'string' },
+                    { name: 'assetType', type: 'string' },
+                    { name: 'name', type: 'string' },
+                    { name: 'value', type: 'string' },
+                    { name: 'currency', type: 'string' },
+                    { name: 'owner', type: 'address' },
+                    { name: 'mintingFee', type: 'string' },
+                    { name: 'deadline', type: 'uint256' }
+                ]
+            };
+
+            const value = {
+                action: handoffData.action,
+                assetId: handoffData.asset.assetId,
+                assetType: handoffData.asset.type,
+                name: handoffData.asset.name,
+                value: handoffData.asset.value,
+                currency: handoffData.asset.currency,
+                owner: handoffData.asset.owner,
+                mintingFee: mintingFee,
+                deadline: handoffData.deadline
+            };
+
+            const signature = await signer.signTypedData(domain, types, value);
+
+            const confirmResponse = await fetch(`/api/rwa/assets/${assetId}/confirm`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    txHash: signature,
+                    signedData: {
+                        domain,
+                        types,
+                        value,
+                        signature
+                    }
+                })
+            });
+
+            if (!confirmResponse.ok) {
+                throw new Error('Failed to confirm minting');
+            }
+
+            alert(`Asset minted successfully! Minting fee: ${mintingFee} USDC`);
+        } catch (err) {
+            console.error('Handoff signing failed:', err);
+            if (err instanceof Error && err.message.includes('user rejected')) {
+                alert('Transaction cancelled by user');
+            } else {
+                alert(`Signing failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+            throw err;
         }
     };
 
@@ -568,26 +779,124 @@ export default function RWAServices() {
                     <button
                         onClick={() => setActiveTab('assets')}
                         className={`px-4 py-2 rounded-lg font-medium transition ${activeTab === 'assets'
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-white text-gray-600 hover:bg-gray-50'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                             }`}
                     >
-                        <Box className="w-4 h-4 inline mr-2" />
-                        Assets ({assets.length})
+                        Assets
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('state_machine')}
+                        className={`px-4 py-2 rounded-lg font-medium transition ${activeTab === 'state_machine'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                    >
+                        State Machine
                     </button>
                     <button
                         onClick={() => setActiveTab('settlements')}
                         className={`px-4 py-2 rounded-lg font-medium transition ${activeTab === 'settlements'
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-white text-gray-600 hover:bg-gray-50'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                             }`}
                     >
-                        <CheckCircle2 className="w-4 h-4 inline mr-2" />
-                        Settlements ({requests.length})
+                        Settlements
                     </button>
                 </div>
 
                 {/* Asset Types Filter */}
+                {activeTab === 'state_machine' && (
+                    <div className="space-y-6">
+                        {selectedRWAId ? (
+                            <div>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setSelectedRWAId(null)}
+                                    className="mb-4"
+                                >
+                                    ← Back to List
+                                </Button>
+                                <RWAStateMachine
+                                    rwaId={selectedRWAId}
+                                    onTransition={async (toState) => {
+                                        try {
+                                            const response = await fetch(`/api/rwa/assets/${selectedRWAId}/state`, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({
+                                                    status: toState,
+                                                    actor: walletAddress || '0x742d35Cc6634C0532925a3b844Bc454e4438f51B',
+                                                    reason: `Transition to ${toState}`
+                                                })
+                                            });
+
+                                            if (!response.ok) {
+                                                const error = await response.json();
+                                                throw new Error(error.error || 'Failed to transition state');
+                                            }
+
+                                            alert(`Successfully transitioned to ${toState.toUpperCase()}`);
+                                            await loadData();
+                                        } catch (err) {
+                                            console.error('State transition failed:', err);
+                                            alert(`Transition failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                                        }
+                                    }}
+                                />
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-lg font-semibold">RWA State Machines</h3>
+                                    <Button onClick={() => setShowMintModal(true)}>
+                                        <Plus className="w-4 h-4 mr-2" />
+                                        Create State Machine
+                                    </Button>
+                                </div>
+                                {assets.length === 0 ? (
+                                    <Card>
+                                        <CardContent className="py-12 text-center">
+                                            <Activity className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                                            <p className="text-gray-600">No RWA state machines yet</p>
+                                            <Button onClick={() => setShowMintModal(true)} className="mt-4">
+                                                Create Your First RWA
+                                            </Button>
+                                        </CardContent>
+                                    </Card>
+                                ) : (
+                                    <div className="grid gap-4">
+                                        {assets.map((asset) => (
+                                            <Card
+                                                key={asset.assetId}
+                                                className="cursor-pointer hover:shadow-lg transition-shadow"
+                                                onClick={() => setSelectedRWAId(asset.assetId)}
+                                            >
+                                                <CardContent className="p-6">
+                                                    <div className="flex items-center justify-between">
+                                                        <div>
+                                                            <h4 className="font-semibold text-lg">{asset.name}</h4>
+                                                            <p className="text-sm text-gray-600 mt-1">{asset.assetId}</p>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <Badge variant="outline">
+                                                                {asset.status}
+                                                            </Badge>
+                                                            <Button variant="outline" size="sm">
+                                                                View Details →
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {activeTab === 'assets' && (
                     <div className="mb-6">
                         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">

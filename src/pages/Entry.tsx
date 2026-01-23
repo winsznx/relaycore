@@ -73,7 +73,7 @@ export function EntryPage() {
                 {/* Footer Links */}
                 <div className="flex gap-6 text-sm text-gray-500 mt-auto">
                     <a href="https://docs.relaycore.xyz" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Docs</a>
-                    <a href="https://github.com/AceVikings/relaycore" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">GitHub</a>
+                    <a href="https://github.com/winsznx/relaycore" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">GitHub</a>
                     <Link to="/terms" className="hover:text-white transition-colors">Terms</Link>
                     <Link to="/privacy" className="hover:text-white transition-colors">Privacy</Link>
                 </div>

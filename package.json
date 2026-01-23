@@ -25,7 +25,9 @@
     "deploy:testnet": "npx hardhat run scripts/deploy.ts --network cronosZkevmTestnet",
     "deploy:mainnet": "npx hardhat run scripts/deploy.ts --network cronosZkevmMainnet",
     "verify:testnet": "npx hardhat verify --network cronosZkevmTestnet",
-    "register-agent:testnet": "npx hardhat run scripts/register-agent.ts --network cronosZkevmTestnet"
+    "register-agent:testnet": "npx hardhat run scripts/register-agent.ts --network cronosZkevmTestnet",
+    "chat:init-rag": "tsx src/scripts/init-rag.ts",
+    "chat:test": "vitest src/services/chat/chat.test.ts"
   },
   "dependencies": {
     "@amcharts/amcharts5": "^5.15.2",
@@ -34,6 +36,12 @@
     "@apollo/server": "^5.2.0",
     "@crypto.com/developer-platform-client": "^1.1.2",
     "@crypto.com/facilitator-client": "^1.0.2",
+    "@langchain/anthropic": "^1.3.11",
+    "@langchain/community": "^1.1.6",
+    "@langchain/core": "^1.1.16",
+    "@langchain/langgraph": "^1.1.1",
+    "@langchain/openai": "^1.2.3",
+    "@langchain/textsplitters": "^1.0.1",
     "@modelcontextprotocol/sdk": "^1.25.2",
     "@openzeppelin/contracts": "^5.4.0",
     "@pythnetwork/hermes-client": "^2.1.0",
@@ -55,10 +63,12 @@
     "@types/node-schedule": "^2.1.8",
     "@vvs-finance/swap-sdk": "^0.0.5",
     "@xyflow/react": "^12.10.0",
+    "chromadb": "^3.2.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "concurrently": "^9.2.1",
     "cors": "^2.8.5",
+    "cron": "^4.4.0",
     "d3": "^7.9.0",
     "dotenv": "^17.2.3",
     "ethers": "^6.15.0",
@@ -68,6 +78,7 @@
     "graphql-tag": "^2.12.6",
     "gsap": "^3.14.2",
     "ioredis": "^5.9.1",
+    "langchain": "^1.2.12",
     "lucide-react": "^0.562.0",
     "node-schedule": "^2.1.1",
     "passport": "^0.7.0",
@@ -83,7 +94,8 @@
     "telegraf": "^4.16.3",
     "tsx": "^4.21.0",
     "viem": "^2.44.4",
-    "wagmi": "^3.3.2"
+    "wagmi": "^3.3.2",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",

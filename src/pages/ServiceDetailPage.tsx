@@ -22,7 +22,7 @@ export function ServiceDetailPage() {
     return (
         <ServiceDetails
             serviceId={id}
-            onBack={() => navigate('/dashboard/services')}
+            onBack={() => navigate('/marketplace')}
             onCallService={(service) => {
                 console.log('Call service:', service.name);
                 // Integration point for service calling

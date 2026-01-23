@@ -30,9 +30,19 @@ export function BotIntegration() {
     const [copied, setCopied] = useState(false);
     const [countdown, setCountdown] = useState(0);
 
+    // Notification state
+    const [notifications, setNotifications] = useState({
+        payments: true,
+        services: true,
+        reputation: true,
+        health: true,
+        dailySummary: true
+    });
+
     useEffect(() => {
         if (isConnected && address) {
             fetchLinkedAccounts();
+            fetchNotificationSettings();
         }
     }, [isConnected, address]);
 
@@ -66,6 +76,45 @@ export function BotIntegration() {
             }
         } catch (error) {
             console.error('Failed to fetch linked accounts:', error);
+        }
+    };
+
+    const fetchNotificationSettings = async () => {
+        try {
+            const response = await fetch(`/api/user/profile?wallet=${address}`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data && data.notifications) {
+                    setNotifications({
+                        payments: data.notifications.payments ?? true,
+                        services: data.notifications.services ?? true,
+                        reputation: data.notifications.reputation ?? true,
+                        health: data.notifications.health ?? true,
+                        dailySummary: data.notifications.dailySummary ?? true
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Failed to fetch settings:', error);
+        }
+    };
+
+    const updateNotification = async (key: keyof typeof notifications, value: boolean) => {
+        const newSettings = { ...notifications, [key]: value };
+        setNotifications(newSettings); // Optimistic update
+
+        try {
+            await fetch('/api/user/profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    walletAddress: address,
+                    notificationPreferences: newSettings
+                })
+            });
+        } catch (error) {
+            console.error('Failed to save settings:', error);
+            setNotifications(notifications); // Revert on error
         }
     };
 
@@ -330,32 +379,38 @@ export function BotIntegration() {
                             <NotificationToggle
                                 label="Payment Received"
                                 description="When you receive a payment"
-                                defaultChecked={true}
+                                checked={notifications.payments}
+                                onChange={(v) => updateNotification('payments', v)}
                             />
                             <NotificationToggle
                                 label="Payment Sent"
                                 description="When you send a payment"
-                                defaultChecked={false}
+                                checked={false} // Currently forced false/disabled in UI logic
+                                onChange={(v) => updateNotification('payments', v)}
                             />
                             <NotificationToggle
                                 label="Service Called"
                                 description="When your service is called"
-                                defaultChecked={true}
+                                checked={notifications.services}
+                                onChange={(v) => updateNotification('services', v)}
                             />
                             <NotificationToggle
                                 label="Reputation Changes"
                                 description="When your reputation score changes"
-                                defaultChecked={true}
+                                checked={notifications.reputation}
+                                onChange={(v) => updateNotification('reputation', v)}
                             />
                             <NotificationToggle
                                 label="Health Alerts"
                                 description="When service health changes"
-                                defaultChecked={true}
+                                checked={notifications.health}
+                                onChange={(v) => updateNotification('health', v)}
                             />
                             <NotificationToggle
                                 label="Daily Summary"
                                 description="Daily digest at 9 AM"
-                                defaultChecked={true}
+                                checked={notifications.dailySummary}
+                                onChange={(v) => updateNotification('dailySummary', v)}
                             />
                         </div>
                     </CardContent>
@@ -402,23 +457,22 @@ export function BotIntegration() {
 interface NotificationToggleProps {
     label: string;
     description: string;
-    defaultChecked?: boolean;
+    checked: boolean;
+    onChange: (checked: boolean) => void;
 }
 
-function NotificationToggle({ label, description, defaultChecked = false }: NotificationToggleProps) {
-    const [enabled, setEnabled] = useState(defaultChecked);
-
+function NotificationToggle({ label, description, checked, onChange }: NotificationToggleProps) {
     return (
         <div
-            onClick={() => setEnabled(!enabled)}
-            className={`flex items-center justify-between p-4 rounded-lg cursor-pointer transition-colors ${enabled ? 'bg-green-50 ring-1 ring-green-200' : 'bg-gray-50 hover:bg-gray-100'
+            onClick={() => onChange(!checked)}
+            className={`flex items-center justify-between p-4 rounded-lg cursor-pointer transition-colors ${checked ? 'bg-green-50 ring-1 ring-green-200' : 'bg-gray-50 hover:bg-gray-100'
                 }`}
         >
             <div>
                 <div className="font-medium text-sm">{label}</div>
                 <div className="text-xs text-gray-500">{description}</div>
             </div>
-            {enabled ? (
+            {checked ? (
                 <Bell className="h-5 w-5 text-green-600" />
             ) : (
                 <BellOff className="h-5 w-5 text-gray-400" />

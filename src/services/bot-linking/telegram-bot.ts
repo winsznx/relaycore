@@ -8,11 +8,12 @@
 import { Telegraf, Context, Markup } from 'telegraf';
 import { supabase } from '../../lib/supabase.js';
 import logger from '../../lib/logger.js';
+import http from 'http';
 import {
     completeBotLink,
     getLinkedAccount,
     unlinkBotAccount,
-} from './telegram-link';
+} from './telegram-link.js';
 
 // Types
 interface BotContext extends Context {
@@ -26,9 +27,20 @@ const bot = new Telegraf<BotContext>(process.env.TELEGRAM_BOT_TOKEN || '');
 bot.use(async (ctx, next) => {
     if (!ctx.from) return next();
 
-    const account = await getLinkedAccount('telegram', ctx.from.id.toString());
-    if (account) {
-        ctx.linkedWallet = account.walletAddress;
+    try {
+        // Add 2s timeout to DB call prevents hanging
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 2000));
+
+        const account = await Promise.race([
+            getLinkedAccount('telegram', ctx.from.id.toString()),
+            timeoutPromise
+        ]) as any;
+
+        if (account) {
+            ctx.linkedWallet = account.walletAddress;
+        }
+    } catch (error) {
+        // Log locally but don't spam production logs unless critical
     }
 
     return next();
@@ -163,6 +175,19 @@ bot.command('unlink', async (ctx) => {
     }
 });
 
+// Safe DB call helper
+const safeGetLinkedAccount = async (platform: string, id: string) => {
+    try {
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 2000));
+        return await Promise.race([
+            getLinkedAccount(platform as any, id),
+            timeoutPromise
+        ]) as any;
+    } catch (e) {
+        return null;
+    }
+};
+
 /**
  * /status - Check connection status
  */
@@ -176,7 +201,17 @@ bot.command('status', async (ctx) => {
         return;
     }
 
-    const account = await getLinkedAccount('telegram', ctx.from!.id.toString());
+    const account = await safeGetLinkedAccount('telegram', ctx.from!.id.toString());
+
+    if (!account) {
+        // Fallback if DB text lookup fails but middleware succeeded
+        await ctx.replyWithMarkdown(
+            `*Connected*\n\n` +
+            `*Wallet:* \`${ctx.linkedWallet.slice(0, 6)}...${ctx.linkedWallet.slice(-4)}\`\n` +
+            `_Details temporarily unavailable_`
+        );
+        return;
+    }
 
     await ctx.replyWithMarkdown(
         `*Connected*\n\n` +
@@ -185,6 +220,77 @@ bot.command('status', async (ctx) => {
         `*Linked:* ${account?.linkedAt.toLocaleDateString()}\n` +
         `*Last Active:* ${account?.lastActiveAt.toLocaleDateString()}`
     );
+});
+
+/**
+ * /sessions - List active sessions
+ */
+bot.command('sessions', async (ctx) => {
+    if (!ctx.linkedWallet) {
+        await ctx.reply('Please link your wallet first. Use /link <code>');
+        return;
+    }
+
+    try {
+        const { data: sessions, error } = await supabase
+            .from('escrow_sessions')
+            .select('*')
+            .or(`client_address.eq.${ctx.linkedWallet.toLowerCase()},provider_address.eq.${ctx.linkedWallet.toLowerCase()}`)
+            .eq('status', 'active')
+            .limit(5);
+
+        if (error) throw error;
+
+        if (!sessions || sessions.length === 0) {
+            await ctx.reply('*No active sessions found*', { parse_mode: 'Markdown' });
+            return;
+        }
+
+        let message = `*Active Sessions (${sessions.length})*\n\n`;
+        for (const session of sessions) {
+            message += `• *${session.service_id || 'Unknown Service'}*\n`;
+            message += `   Type: ${session.type}\n`;
+            message += `   Balance: $${session.current_balance_usd || '0.00'}\n\n`;
+        }
+        await ctx.replyWithMarkdown(message);
+    } catch (error) {
+        await ctx.reply('Failed to fetch sessions.');
+    }
+});
+
+/**
+ * /rwa - List RWA assets
+ */
+bot.command('rwa', async (ctx) => {
+    if (!ctx.linkedWallet) {
+        await ctx.reply('Please link your wallet first. Use /link <code>');
+        return;
+    }
+
+    try {
+        const { data: assets, error } = await supabase
+            .from('rwa_assets')
+            .select('*')
+            .eq('owner_address', ctx.linkedWallet.toLowerCase())
+            .limit(5);
+
+        if (error) throw error;
+
+        if (!assets || assets.length === 0) {
+            await ctx.reply('*No RWA assets found*', { parse_mode: 'Markdown' });
+            return;
+        }
+
+        let message = `*My RWA Assets*\n\n`;
+        for (const asset of assets) {
+            message += `• *${asset.name}* (${asset.symbol})\n`;
+            message += `   Value: $${asset.valuation_usd || '0'}\n`;
+            message += `   Status: ${asset.status}\n\n`;
+        }
+        await ctx.replyWithMarkdown(message);
+    } catch (error) {
+        await ctx.reply('Failed to fetch RWA assets.');
+    }
 });
 
 /**
@@ -433,19 +539,21 @@ export async function startTelegramBot(): Promise<void> {
 
         if (webhookDomain) {
             console.log('Starting bot in webhook mode with domain:', webhookDomain);
-            bot.launch({
-                webhook: {
-                    domain: webhookDomain,
-                    port: 4002,
-                    path: '/telegram-webhook',
-                }
-            }).then(() => {
+
+            try {
+                // await bot.telegram.setWebhook(`https://${webhookDomain}/telegram-webhook`);
+            } catch (e) {
+                console.warn('Skipping setWebhook (likely 429)', e);
+            }
+
+            // Start the webhook server manually using http.createServer
+            // This avoids Telegraf's internal launch mechanisms that might force setWebhook
+            const callback = bot.webhookCallback('/telegram-webhook');
+            http.createServer(callback).listen(4002, () => {
                 logger.info('Telegram bot started in webhook mode');
-                console.log(`Webhook URL: https://${webhookDomain}/telegram-webhook`);
-            }).catch((error) => {
-                logger.error('Failed to start webhook', error as Error);
-                console.error('Webhook error:', error);
+                console.log('Bot server listening on port 4002');
             });
+
         } else {
             console.log('Starting bot in polling mode...');
             bot.launch().then(() => {

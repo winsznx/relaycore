@@ -109,6 +109,16 @@ router.get('/', async (req, res) => {
         // Post-process filters and sorting
         let results = services.map(formatServiceForDiscovery);
 
+        // Deduplicate by name (keep the one with highest reputation)
+        const serviceMap = new Map<string, typeof results[0]>();
+        for (const service of results) {
+            const existing = serviceMap.get(service.name.toLowerCase());
+            if (!existing || (service.reputationScore || 0) > (existing.reputationScore || 0)) {
+                serviceMap.set(service.name.toLowerCase(), service);
+            }
+        }
+        results = Array.from(serviceMap.values());
+
         // Filter by reputation
         if (minReputation) {
             results = results.filter(s => s.reputationScore >= Number(minReputation));
@@ -440,6 +450,110 @@ router.get('/:id/dependents', async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch dependents' });
     }
 });
+
+/**
+ * GET /api/services/:id/payments
+ *
+ * Get payment history for a specific service/agent.
+ * Combines data from both 'payments' and 'session_payments' tables.
+ */
+router.get('/:id/payments', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { limit = 50, offset = 0, status } = req.query;
+        const limitNum = Number(limit);
+        const offsetNum = Number(offset);
+
+        // First get the service to find its owner_address
+        const { data: service } = await supabase
+            .from('services')
+            .select('owner_address, name')
+            .eq('id', id)
+            .single();
+
+        const ownerAddress = service?.owner_address?.toLowerCase();
+
+        // Fetch from payments table (x402 direct payments)
+        let paymentsQuery = supabase
+            .from('payments')
+            .select('*', { count: 'exact' })
+            .or(`service_id.eq.${id},to_address.ilike.${ownerAddress || 'none'}`)
+            .order('created_at', { ascending: false });
+
+        if (status) {
+            paymentsQuery = paymentsQuery.eq('status', status);
+        }
+
+        const { data: payments, count: paymentsCount } = await paymentsQuery;
+
+        // Fetch from session_payments table (session-based payments to this agent)
+        let sessionPaymentsQuery = supabase
+            .from('session_payments')
+            .select('*', { count: 'exact' })
+            .order('created_at', { ascending: false });
+
+        if (ownerAddress) {
+            sessionPaymentsQuery = sessionPaymentsQuery.ilike('agent_address', ownerAddress);
+        }
+
+        if (status) {
+            sessionPaymentsQuery = sessionPaymentsQuery.eq('status', status);
+        }
+
+        const { data: sessionPayments, count: sessionPaymentsCount } = await sessionPaymentsQuery;
+
+        // Combine and normalize both payment sources
+        const allPayments = [
+            ...(payments || []).map(p => ({
+                paymentId: p.payment_id,
+                txHash: p.tx_hash,
+                from: p.from_address,
+                to: p.to_address,
+                amount: p.amount,
+                tokenAddress: p.token_address,
+                resourceUrl: p.resource_url,
+                status: p.status,
+                timestamp: p.created_at || p.timestamp,
+                source: 'x402'
+            })),
+            ...(sessionPayments || []).map(sp => ({
+                paymentId: sp.execution_id || `session_${sp.id}`,
+                txHash: sp.tx_hash || sp.facilitator_tx_hash,
+                from: `session:${sp.session_id}`,
+                to: sp.agent_address,
+                amount: sp.amount,
+                tokenAddress: null,
+                resourceUrl: null,
+                status: sp.status || 'success',
+                timestamp: sp.created_at,
+                source: 'session'
+            }))
+        ];
+
+        // Sort by timestamp descending
+        allPayments.sort((a, b) =>
+            new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()
+        );
+
+        // Apply pagination
+        const paginatedPayments = allPayments.slice(offsetNum, offsetNum + limitNum);
+        const totalCount = (paymentsCount || 0) + (sessionPaymentsCount || 0);
+
+        res.json({
+            payments: paginatedPayments,
+            total: totalCount,
+            offset: offsetNum,
+            limit: limitNum
+        });
+    } catch (error) {
+        logger.error('Service payments fetch error', error as Error);
+        res.status(500).json({ error: 'Failed to fetch service payments' });
+    }
+});
+
+// ============================================
+// GRAPH ENDPOINTS
+// ============================================
 
 /**
  * GET /api/graph/path

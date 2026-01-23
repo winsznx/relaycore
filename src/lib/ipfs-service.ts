@@ -5,7 +5,7 @@
  * All sensitive credentials are kept server-side only.
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const API_BASE = '';
 
 export interface AgentMetadata {
     name: string;

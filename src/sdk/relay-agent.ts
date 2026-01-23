@@ -37,6 +37,8 @@ export type Network = 'cronos-mainnet' | 'cronos-testnet' | 'cronos-zkevm';
 export interface AgentConfig {
     /** Connected wallet (ethers.Signer or address for read-only) */
     wallet: ethers.Signer | string;
+    /** Relay Core API Key (starts with rc_...) */
+    apiKey: string;
     /** Target network */
     network?: Network;
     /** API endpoint (defaults to production) */
@@ -193,6 +195,82 @@ export interface AgentMemory {
     clear(): void;
 }
 
+/** A2A Agent Card Resource */
+export interface AgentCardResource {
+    id: string;
+    title: string;
+    url: string;
+    price?: string;
+    paywall: {
+        protocol: 'x402';
+        settlement: string;
+    };
+}
+
+/** A2A Agent Card for discovery */
+export interface AgentCard {
+    name: string;
+    description: string;
+    url: string;
+    version?: string;
+    network: string;
+    capabilities?: string[];
+    resources: AgentCardResource[];
+    contracts?: {
+        escrowSession?: string;
+        identityRegistry?: string;
+        reputationRegistry?: string;
+        usdcToken?: string;
+    };
+    x402?: {
+        facilitator?: string;
+        token?: string;
+        chainId?: number;
+    };
+}
+
+/** Task state enum */
+export type TaskState = 'idle' | 'pending' | 'settled' | 'failed';
+
+/** Task Artifact for tracking agent actions */
+export interface TaskArtifact {
+    task_id: string;
+    agent_id: string;
+    service_id?: string;
+    session_id?: string;
+    state: TaskState;
+    payment_id?: string;
+    facilitator_tx?: string;
+    retries: number;
+    timestamps: {
+        created: string;
+        updated: string;
+        completed?: string;
+    };
+    inputs: Record<string, unknown>;
+    outputs: Record<string, unknown>;
+    error?: {
+        code: string;
+        message: string;
+        retryable: boolean;
+    };
+    metrics?: {
+        total_ms: number;
+        payment_ms?: number;
+        service_ms?: number;
+    };
+}
+
+/** Task statistics summary */
+export interface TaskStats {
+    total: number;
+    pending: number;
+    settled: number;
+    failed: number;
+    success_rate: number;
+    avg_duration_ms: number;
+}
+
 // ============================================================================
 // IMPLEMENTATION
 // ============================================================================
@@ -232,12 +310,14 @@ export class RelayAgent {
     private _address: string = '';
     private network: Network;
     private apiUrl: string;
+    private apiKey: string;
     private trustPolicy: TrustPolicy = {};
     private memoryStore: OutcomeRecord[] = [];
 
     constructor(config: AgentConfig) {
         this.network = config.network || 'cronos-mainnet';
         this.apiUrl = config.apiUrl || NETWORK_CONFIG[this.network].apiUrl;
+        this.apiKey = config.apiKey;
 
         if (typeof config.wallet === 'string') {
             this._address = config.wallet.toLowerCase();
@@ -248,6 +328,16 @@ export class RelayAgent {
                 this._address = addr.toLowerCase();
             });
         }
+    }
+
+    /**
+     * Get authenticated headers for API requests
+     */
+    private getHeaders(): HeadersInit {
+        return {
+            'Content-Type': 'application/json',
+            'x-api-key': this.apiKey
+        };
     }
 
     // ==========================================================================
@@ -366,7 +456,9 @@ export class RelayAgent {
         if (criteria.capabilities) params.set('capabilities', criteria.capabilities.join(','));
         params.set('limit', '100');
 
-        const response = await fetch(`${this.apiUrl}/api/services?${params}`);
+        const response = await fetch(`${this.apiUrl}/api/services?${params}`, {
+            headers: this.getHeaders()
+        });
         if (!response.ok) {
             throw this.createError('SERVICE_UNAVAILABLE', 'Failed to discover services', true);
         }
@@ -435,7 +527,7 @@ export class RelayAgent {
         try {
             let response = await fetch(resolvedService.endpoint, {
                 method: input ? 'POST' : 'GET',
-                headers: { 'Content-Type': 'application/json' },
+                headers: this.getHeaders(),
                 body: input ? JSON.stringify(input) : undefined,
                 signal: controller.signal,
             });
@@ -471,7 +563,7 @@ export class RelayAgent {
                 response = await fetch(resolvedService.endpoint, {
                     method: input ? 'POST' : 'GET',
                     headers: {
-                        'Content-Type': 'application/json',
+                        ...this.getHeaders(),
                         'X-Payment': payment.txHash,
                         'X-Payment-Id': payment.paymentId,
                     },
@@ -720,7 +812,9 @@ export class RelayAgent {
     // ==========================================================================
 
     private async getServiceById(serviceId: string): Promise<SelectedService | null> {
-        const response = await fetch(`${this.apiUrl}/api/services/${serviceId}`);
+        const response = await fetch(`${this.apiUrl}/api/services/${serviceId}`, {
+            headers: this.getHeaders()
+        });
         if (!response.ok) return null;
 
         const s = await response.json();
@@ -849,6 +943,449 @@ export class RelayAgent {
             txHash: result.txHash || '',
         };
     }
+
+    // ==========================================================================
+    // A2A DISCOVERY - Agent-to-Agent Protocol Support
+    // ==========================================================================
+
+    /**
+     * Discover an agent's capabilities via their agent card
+     * 
+     * @example
+     * const card = await agent.discoverAgentCard("https://api.service.com");
+     * console.log(card.resources); // Available x402-gated resources
+     */
+    async discoverAgentCard(baseUrl: string): Promise<AgentCard | null> {
+        const paths = ['/.well-known/agent-card.json', '/.well-known/agent.json'];
+
+        for (const path of paths) {
+            try {
+                const response = await fetch(`${baseUrl.replace(/\/$/, '')}${path}`, {
+                    headers: { 'Accept': 'application/json' },
+                });
+
+                if (response.ok) {
+                    return await response.json();
+                }
+            } catch {
+                continue;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Discover multiple remote agents in parallel
+     * 
+     * @example
+     * const agents = await agent.discoverRemoteAgents([
+     *   "https://perpai.relaycore.xyz",
+     *   "https://rwa.relaycore.xyz"
+     * ]);
+     */
+    async discoverRemoteAgents(urls: string[]): Promise<Array<{
+        url: string;
+        card: AgentCard | null;
+        online: boolean;
+    }>> {
+        return Promise.all(
+            urls.map(async (url) => {
+                const card = await this.discoverAgentCard(url);
+                return {
+                    url,
+                    card,
+                    online: card !== null,
+                };
+            })
+        );
+    }
+
+    /**
+     * Get local Relay Core agent card
+     */
+    async getLocalAgentCard(): Promise<AgentCard> {
+        const response = await fetch(`${this.apiUrl}/.well-known/agent-card.json`);
+        if (!response.ok) {
+            throw this.createError('SERVICE_UNAVAILABLE', 'Failed to fetch agent card', true);
+        }
+        return response.json();
+    }
+
+    // ==========================================================================
+    // TASK ARTIFACTS - Track and audit all agent actions
+    // ==========================================================================
+
+    /**
+     * Create a new task artifact
+     * 
+     * @example
+     * const task = await agent.createTask({
+     *   service_id: "perpai-quote",
+     *   inputs: { pair: "BTC/USD" }
+     * });
+     */
+    async createTask(params: {
+        service_id?: string;
+        session_id?: string;
+        inputs: Record<string, unknown>;
+    }): Promise<TaskArtifact> {
+        const agentId = await this.getAddress();
+
+        const response = await fetch(`${this.apiUrl}/api/tasks`, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify({
+                agent_id: agentId,
+                service_id: params.service_id,
+                session_id: params.session_id,
+                inputs: params.inputs,
+            }),
+        });
+
+        if (!response.ok) {
+            throw this.createError('EXECUTION_FAILED', 'Failed to create task', true);
+        }
+
+        return response.json();
+    }
+
+    /**
+     * Get a task artifact by ID
+     */
+    async getTask(taskId: string): Promise<TaskArtifact | null> {
+        const response = await fetch(`${this.apiUrl}/api/tasks/${taskId}`, {
+            headers: this.getHeaders()
+        });
+        if (response.status === 404) return null;
+        if (!response.ok) {
+            throw this.createError('EXECUTION_FAILED', 'Failed to get task', true);
+        }
+        return response.json();
+    }
+
+    /**
+     * Query task artifacts
+     * 
+     * @example
+     * const tasks = await agent.getTasks({ state: 'settled', limit: 10 });
+     */
+    async getTasks(params?: {
+        service_id?: string;
+        session_id?: string;
+        state?: TaskState;
+        from?: Date;
+        to?: Date;
+        limit?: number;
+    }): Promise<TaskArtifact[]> {
+        const agentId = await this.getAddress();
+        const queryParams = new URLSearchParams();
+        queryParams.set('agent_id', agentId);
+
+        if (params?.service_id) queryParams.set('service_id', params.service_id);
+        if (params?.session_id) queryParams.set('session_id', params.session_id.toString());
+        if (params?.state) queryParams.set('state', params.state);
+        if (params?.from) queryParams.set('from', params.from.toISOString());
+        if (params?.to) queryParams.set('to', params.to.toISOString());
+        if (params?.limit) queryParams.set('limit', params.limit.toString());
+
+        const response = await fetch(`${this.apiUrl}/api/tasks?${queryParams}`, {
+            headers: this.getHeaders()
+        });
+        if (!response.ok) {
+            throw this.createError('EXECUTION_FAILED', 'Failed to query tasks', true);
+        }
+
+        const data = await response.json();
+        return data.tasks || [];
+    }
+
+    /**
+     * Get task statistics
+     */
+    async getTaskStats(): Promise<TaskStats> {
+        const agentId = await this.getAddress();
+        const response = await fetch(`${this.apiUrl}/api/tasks/stats?agent_id=${agentId}`, {
+            headers: this.getHeaders()
+        });
+        if (!response.ok) {
+            throw this.createError('EXECUTION_FAILED', 'Failed to get task stats', true);
+        }
+        return response.json();
+    }
+
+    /**
+     * Mark a task as settled (success)
+     */
+    async settleTask(taskId: string, outputs: Record<string, unknown>, metrics?: TaskArtifact['metrics']): Promise<TaskArtifact> {
+        const response = await fetch(`${this.apiUrl}/api/tasks/${taskId}/settle`, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify({ outputs, metrics }),
+        });
+
+        if (!response.ok) {
+            throw this.createError('EXECUTION_FAILED', 'Failed to settle task', true);
+        }
+
+        return response.json();
+    }
+
+    /**
+     * Mark a task as failed
+     */
+    async failTask(taskId: string, error: { code: string; message: string; retryable: boolean }, metrics?: TaskArtifact['metrics']): Promise<TaskArtifact> {
+        const response = await fetch(`${this.apiUrl}/api/tasks/${taskId}/fail`, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify({ error, metrics }),
+        });
+
+        if (!response.ok) {
+            throw this.createError('EXECUTION_FAILED', 'Failed to fail task', true);
+        }
+
+        return response.json();
+    }
+
+    // ========================================================================
+    // META-AGENT METHODS (Agent Discovery & Hiring)
+    // ========================================================================
+
+    /**
+     * Discover agents based on criteria
+     */
+    async discoverAgents(query: {
+        capability?: string;
+        category?: string;
+        minReputation?: number;
+        maxPricePerCall?: string;
+        limit?: number;
+    }): Promise<Array<{
+        agentId: string;
+        agentName: string;
+        agentUrl: string;
+        reputationScore: number;
+        pricePerCall: string;
+        successRate: number;
+        compositeScore: number;
+    }>> {
+        const response = await fetch(`${this.apiUrl}/api/meta-agent/discover`, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify(query)
+        });
+
+        if (!response.ok) {
+            throw this.createError('EXECUTION_FAILED', 'Agent discovery failed', true);
+        }
+
+        const data = await response.json();
+        return data.agents || [];
+    }
+
+    /**
+     * Hire an agent to perform a task
+     */
+    async hireAgent(request: {
+        agentId: string;
+        resourceId: string;
+        budget: string;
+        task: Record<string, unknown>;
+    }): Promise<{
+        success: boolean;
+        taskId: string;
+        agentId: string;
+        cost: string;
+    }> {
+        const agentId = await this.getAddress();
+
+        const response = await fetch(`${this.apiUrl}/api/meta-agent/hire`, {
+            method: 'POST',
+            headers: {
+                ...this.getHeaders(),
+                'X-Agent-Id': agentId
+            },
+            body: JSON.stringify(request)
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw this.createError('EXECUTION_FAILED', error.error || 'Agent hiring failed', true);
+        }
+
+        return response.json();
+    }
+
+    /**
+     * Execute a delegated task
+     */
+    async executeDelegation(taskId: string): Promise<{
+        success: boolean;
+        outcome: {
+            taskId: string;
+            agentId: string;
+            state: string;
+            outputs?: Record<string, unknown>;
+            error?: { code: string; message: string };
+        };
+    }> {
+        const response = await fetch(`${this.apiUrl}/api/meta-agent/execute/${taskId}`, {
+            method: 'POST',
+            headers: this.getHeaders()
+        });
+
+        if (!response.ok) {
+            throw this.createError('EXECUTION_FAILED', 'Delegation execution failed', true);
+        }
+
+        return response.json();
+    }
+
+    /**
+     * Get delegation status
+     */
+    async getDelegationStatus(taskId: string): Promise<{
+        taskId: string;
+        agentId: string;
+        state: string;
+        cost: string;
+        outputs?: Record<string, unknown>;
+    }> {
+        const response = await fetch(`${this.apiUrl}/api/meta-agent/status/${taskId}`, {
+            headers: this.getHeaders()
+        });
+
+        if (!response.ok) {
+            throw this.createError('EXECUTION_FAILED', 'Failed to get delegation status', true);
+        }
+
+        const data = await response.json();
+        return data.outcome;
+    }
+
+    /**
+     * Fetch agent card for a specific agent
+     */
+    async getAgentCard(agentId: string): Promise<{
+        name: string;
+        description: string;
+        url: string;
+        network: string;
+        resources: Array<{
+            id: string;
+            title: string;
+            url: string;
+        }>;
+    } | null> {
+        const response = await fetch(`${this.apiUrl}/api/meta-agent/agent-card/${agentId}`, {
+            headers: this.getHeaders()
+        });
+
+        if (!response.ok) {
+            return null;
+        }
+
+        const data = await response.json();
+        return data.card || null;
+    }
+
+    // ========================================================================
+    // SESSION MANAGEMENT (x402)
+    // ========================================================================
+
+    /**
+     * Create a new x402 session
+     * 
+     * @returns Session ID and payment request to activate it
+     */
+    async createSession(params: {
+        maxSpend: number;
+        durationHours: number;
+        authorizedAgents?: string[];
+    }): Promise<{
+        sessionId: string;
+        paymentRequest: {
+            amount: string;
+            payTo: string;
+            asset: string;
+        };
+    }> {
+        const ownerAddress = await this.getAddress();
+
+        const response = await fetch(`${this.apiUrl}/api/sessions/create`, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify({
+                ownerAddress,
+                maxSpend: params.maxSpend,
+                durationHours: params.durationHours,
+                authorizedAgents: params.authorizedAgents || []
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw this.createError('EXECUTION_FAILED', error.message || 'Failed to create session', false);
+        }
+
+        const result = await response.json();
+        return {
+            sessionId: result.session.session_id,
+            paymentRequest: result.paymentRequest
+        };
+    }
+
+    /**
+     * Activate a session after paying USDC
+     */
+    async activateSession(sessionId: string, txHash: string, amount: string): Promise<{ success: boolean }> {
+        const response = await fetch(`${this.apiUrl}/api/sessions/${sessionId}/activate`, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify({ txHash, amount })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw this.createError('EXECUTION_FAILED', error.message || 'Failed to activate session', true);
+        }
+
+        return { success: true };
+    }
+
+    /**
+     * Get session details
+     */
+    async getSession(sessionId: string): Promise<{
+        id: string;
+        owner: string;
+        maxSpend: string;
+        spent: string;
+        isActive: boolean;
+        expiresAt: string;
+    } | null> {
+        const response = await fetch(`${this.apiUrl}/api/sessions/${sessionId}`, {
+            headers: this.getHeaders()
+        });
+
+        if (response.status === 404) return null;
+        if (!response.ok) {
+            throw this.createError('EXECUTION_FAILED', 'Failed to get session', true);
+        }
+
+        const data = await response.json();
+        const session = data.session;
+        return {
+            id: session.session_id,
+            owner: session.owner_address,
+            maxSpend: session.max_spend,
+            spent: session.spent,
+            isActive: session.is_active,
+            expiresAt: session.expires_at
+        };
+    }
+
 
     private createError(
         code: ErrorCode,

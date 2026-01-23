@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import { perpIndexer } from '../services/indexer/perp-indexer.js';
 import { TradeRouter } from '../services/perpai/trade-router.js';
-import { x402PaymentMiddleware } from './middleware/x402-payment.js';
 import { requirePayment } from '../services/x402/payment-middleware.js';
 import logger from '../lib/logger.js';
 
@@ -19,6 +18,49 @@ const tradeRouter = new TradeRouter();
 // ============================================
 // QUOTE ENDPOINTS
 // ============================================
+
+/**
+ * GET /api/perpai/quote
+ * 
+ * Returns API documentation for the quote endpoint.
+ */
+router.get('/quote', async (req, res) => {
+    res.json({
+        endpoint: '/api/perpai/quote',
+        method: 'POST',
+        description: 'Get aggregated quote from all perpetual DEX venues',
+        payment: {
+            required: true,
+            amount: '0.01 USDC',
+            merchantAddress: process.env.PAYMENT_RECIPIENT_ADDRESS || '0x0000000000000000000000000000000000000000'
+        },
+        requestBody: {
+            pair: 'string (e.g., "BTC/USD")',
+            side: 'string ("long" or "short")',
+            leverage: 'number (1-100)',
+            sizeUsd: 'number (position size in USD)'
+        },
+        response: {
+            quote: {
+                venue: 'string (best venue name)',
+                entryPrice: 'number',
+                liquidationPrice: 'number',
+                fees: 'object (breakdown of fees)',
+                score: 'number (composite score)'
+            },
+            latencyMs: 'number',
+            timestamp: 'string (ISO 8601)'
+        },
+        example: {
+            request: {
+                pair: 'BTC/USD',
+                side: 'long',
+                leverage: 10,
+                sizeUsd: 1000
+            }
+        }
+    });
+});
 
 /**
  * POST /api/perpai/quote

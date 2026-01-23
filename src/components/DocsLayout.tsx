@@ -1,11 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import {
-    Book,
-    Zap,
-    Code,
-    Layers,
-    Terminal,
     Menu,
     X,
     ChevronRight,
@@ -52,6 +47,7 @@ const navigation: NavSection[] = [
             { title: 'EIP-3009 Gasless', path: '/docs/guides/eip3009' },
             { title: 'ERC-8004 Registries', path: '/docs/guides/erc8004' },
             { title: 'Claude AI Integration', path: '/docs/guides/claude' },
+            { title: 'RWA State Machines', path: '/docs/guides/rwa' },
         ],
     },
     {
