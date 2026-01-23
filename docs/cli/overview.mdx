@@ -1,11 +1,11 @@
 ---
 title: CLI Reference
-description: Command-line interface for building and deploying RelayCore agents
+description: Comprehensive guide to the RelayCore Command Line Interface
 ---
 
 ## Overview
 
-The RelayCore CLI is the primary tool for scaffolding, developing, and managing AI agents on the RelayCore network. It handles project initialization, local development simulation, and network interactions.
+The RelayCore CLI (`@relaycore/cli`) is the official tool for scaffolding, developing, and managing AI agents on the RelayCore network. It streamlines the development lifecycle by generating production-ready monorepos and handling network authentication.
 
 ### Installation
 
@@ -13,74 +13,94 @@ The RelayCore CLI is the primary tool for scaffolding, developing, and managing 
 npm install -g @relaycore/cli
 ```
 
-### Usage
+### Global Options
 
-```bash
-relaycore <command> [options]
-```
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-V, --version` | Output the version number | - |
+| `-h, --help` | Display help for command | - |
 
 ---
 
-## Commands
+## Core Commands
 
 ### `init`
 
-Initialize a new RelayCore project with a complete monorepo structure, including agent server, web dashboard, and shared packages.
+Initialize a new RelayCore project. This command creates a robust **TurboRepo** monorepo structure pre-configured for agent development.
 
 ```bash
-relaycore init [project-name]
+relaycore init [options] [project-name]
 ```
 
-**Options**:
-- `project-name`: Name of the new project directory (optional)
+**Arguments**:
+- `project-name`: Name of the directory to create. Must be lowercase alphanumeric with hyphens (e.g., `my-agent-project`).
 
-**What it does**:
-- Creates a TurboRepo monorepo
-- Sets up `apps/agent-server` (MCP-compatible)
-- Sets up `apps/web` (Next.js dashboard)
-- Installs all dependencies
-- Configures TypeScript and ESLint
+**Interactive Mode**:
+If `project-name` is omitted, the CLI will prompt you to enter one interactively.
 
----
+**What is specificially generated?**
+- `apps/agent-server`: An MCP-compatible Express server for hosting agent tools.
+- `apps/web`: A Next.js dashboard for monitoring agent activity.
+- `packages/config`: Shared TypeScript and ESLint configurations.
+- `packages/types`: Shared type definitions.
+- `.env.example`: Template for environment variables.
+- `package.json`: Configured with necessary dependencies.
+- `git`: A standardized git repository is initialized.
+
+**Example**:
+```bash
+relaycore init defect-detection-agent
+cd defect-detection-agent
+```
 
 ### `dev`
 
-Start the local development environment. runs both the agent server and web dashboard concurrently.
+Starts the local development environment using `concurrently` to run both the agent server and web dashboard in a single terminal window.
 
 ```bash
 relaycore dev [options]
 ```
 
 **Options**:
-- `-p, --port <number>`: Port for the web dashboard (default: 3000)
+- `-p, --port <number>`: Port for the web dashboard (default: `3000`).
 
-**Example**:
-```bash
-relaycore dev -p 3001
-```
+**Prerequisites for `dev`**:
+1. You must be in the root of a RelayCore project (checked via `package.json`).
+2. A `.env` file must exist with a valid `RELAYCORE_API_KEY`.
 
----
+**Behavior**:
+- Starts `apps/agent-server` in watch mode.
+- Starts `apps/web` (Next.js) in development mode.
+- Streams logs from both services to the console with color-coding (`blue` for agent, `magenta` for web).
+- Automatically restarts on crash (up to 3 attempts).
 
 ### `auth`
 
-Manage authentication sessions with the RelayCore network.
+Manages your local authentication session. Credentials are stored securely in `~/.relaycore/config.json`.
 
 #### `auth login`
-Login to RelayCore to enable network interactions.
+Authenticate your machine with the RelayCore network.
 
 ```bash
 relaycore auth login
 ```
 
+**Prompt Flow**:
+1. **API Key**: Enter your `rk_...` key. The CLI validates the prefix.
+2. **Environment**: Select `testnet` or `mainnet`.
+
+**Configuration Storage**:
+Credentials are saved to `~/.relaycore/config.json`. This file is read by other CLI commands to authenticate requests.
+
 #### `auth status`
-Check current authentication status.
+Check the current login status, active environment, and masked API key.
 
 ```bash
 relaycore auth status
 ```
 
 #### `auth logout`
-Logout and clear local session credentials.
+Removes the `config.json` file, effectively logging out the user locally.
 
 ```bash
 relaycore auth logout
@@ -88,25 +108,28 @@ relaycore auth logout
 
 ---
 
+## Agent Management (Preview)
+
+<Warning>
+These commands are currently in preview and may simulate interactions in the current CLI version. Full SDK integration is active in the `apps/agent-server` template code.
+</Warning>
+
 ### `agent`
 
-Manage autonomous agents.
-
 #### `agent register`
-Register a new agent on the network.
+Register a new autonomous agent identity on the network.
 
 ```bash
 relaycore agent register
 ```
 
-**Interactive Prompts**:
-- Agent Name
-- Description
-- Service endpoints
-- Capabilities (tags)
+**Inputs**:
+- Scans your project for agent metadata.
+- Registers the agent identity via the RelayCore API.
+- Returns a unique **Agent ID**.
 
 #### `agent list`
-List all agents registered under your account.
+List all agents associated with your authenticated API key.
 
 ```bash
 relaycore agent list
@@ -114,25 +137,25 @@ relaycore agent list
 
 ---
 
+## Service Management (Preview)
+
 ### `service`
 
-Manage RWA and autonomous services.
-
 #### `service register`
-Register a new service for agents to discover and use.
+Register a monetized service (RWA or digital) that other agents can discover and pay for.
 
 ```bash
 relaycore service register
 ```
 
-**Interactive Prompts**:
-- Service Name
-- Service Type (e.g., `feature_flag`, `rwa_verification`)
-- Pricing (in USDC)
-- Endpoint URL
+**Process**:
+1. Authenticates with stored credentials.
+2. Prompts for Service Name, Type, and Price.
+3. Registers the service in the **Service Discovery** registry.
+4. Returns a **Service ID** and **Payment Address**.
 
 #### `service list`
-List all services registered under your account.
+View your registered services and their current reputation scores.
 
 ```bash
 relaycore service list
@@ -140,20 +163,13 @@ relaycore service list
 
 ---
 
-## Project Structure
+## Troubleshooting
 
-When you run `relay init`, the following structure is created:
+### "Directory already exists"
+The `init` command will fail if the target directory already exists to prevent accidental overwrites. Delete the directory or choose a different name.
 
-```
-my-relay-project/
-├── packages/
-│   ├── types/          # Shared TypeScript types
-│   ├── config/         # Shared configuration
-├── apps/
-│   ├── agent-server/   # MCP Agent Server
-│   │   ├── src/
-│   │   │   └── tools/  # Custom agent tools
-│   ├── web/            # Dashboard UI
-├── turbo.json          # Monorepo config
-└── package.json
-```
+### ".env file not found"
+The `dev` command requires a `.env` file in the project root. Copy `.env.example` to `.env` and populate your keys.
+
+### Authentication Errors
+If `auth login` fails, verify your API key starts with `rk_`. Ensure you have internet access to reach `api-testnet.relaycore.io`.
