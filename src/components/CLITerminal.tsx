@@ -149,27 +149,30 @@ export function CLITerminal() {
                 <div className="absolute -inset-1 bg-gradient-to-r from-[#2A4425]/20 to-[#5C40D0]/20 blur-xl opacity-50 group-hover:opacity-75 transition-opacity duration-1000" />
 
                 {/* Window Header */}
-                <div className="relative flex items-center justify-between px-4 py-3 bg-[#1A1D24] border-b border-white/5">
-                    <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E]" />
-                        <div className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123]" />
-                        <div className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29]" />
+                <div className="flex items-center justify-between px-4 py-3 bg-[#1A1D24] border-b border-white/5 gap-4">
+                    <div className="flex items-center gap-4 shrink-0">
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E]" />
+                            <div className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123]" />
+                            <div className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29]" />
+                        </div>
+                        <div className="hidden md:flex text-gray-400 text-xs items-center gap-2 select-none opacity-50">
+                            <Terminal size={12} />
+                            <span>relaycore-cli — zsh</span>
+                        </div>
                     </div>
-                    <div className="absolute left-1/2 -translate-x-1/2 text-gray-400 text-xs flex items-center gap-2">
-                        <Terminal size={12} />
-                        <span>relaycore-cli — zsh</span>
-                    </div>
-                    <div className="flex items-center gap-3">
+
+                    <div className="flex items-center gap-3 overflow-x-auto no-scrollbar max-w-full">
                         {/* Scenario Tabs */}
-                        <div className="hidden sm:flex bg-black/20 rounded-lg p-0.5">
+                        <div className="flex bg-black/20 rounded-lg p-0.5 shrink-0">
                             {SCENARIOS.map((s, i) => (
                                 <button
                                     key={s.id}
                                     onClick={() => setActiveScenarioIndex(i)}
                                     className={cn(
-                                        "px-2 py-0.5 text-[10px] rounded-md transition-all",
+                                        "px-2 py-0.5 text-[10px] rounded-md transition-all whitespace-nowrap",
                                         activeScenarioIndex === i
-                                            ? "bg-white/10 text-white shadow-sm"
+                                            ? "bg-white/10 text-white shadow-sm font-medium"
                                             : "text-gray-500 hover:text-gray-300"
                                     )}
                                 >
