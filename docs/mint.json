@@ -130,8 +130,7 @@
             "pages": [
                 "deployment/local-development",
                 "deployment/production",
-                "deployment/environment-variables",
-                "deployment/publishing"
+                "deployment/environment-variables"
             ]
         }
     ],

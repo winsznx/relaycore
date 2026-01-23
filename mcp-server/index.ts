@@ -2583,31 +2583,34 @@ server.tool(
         try {
             const response = await fetch(`${config.relayCoreApi}/api/sessions/${sessionId}`);
             if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
                 return formatContent({
                     sessionId,
                     status: "not_found",
-                    message: "Session not found"
+                    message: errorData.message || errorData.error || "Session not found"
                 });
             }
 
-            const session = await response.json();
-            const spent = parseFloat(session.spent || '0');
-            const maxSpend = parseFloat(session.max_spend || '0');
-            const remaining = maxSpend - spent;
+            const data = await response.json();
+            // API returns { session: {...} } wrapper
+            const session = data.session || data;
+
+            const deposited = parseFloat(session.deposited || '0');
+            const released = parseFloat(session.released || '0');
+            const maxSpend = parseFloat(session.maxSpend || session.max_spend || '0');
+            const remaining = deposited - released;
 
             return formatContent({
                 sessionId: session.session_id,
-                status: session.status,
-                owner: session.owner_address,
-                deposited: session.deposited,
-                maxSpend: session.max_spend,
-                spent: spent.toFixed(6),
+                status: session.isActive ? 'active' : 'inactive',
+                owner: session.owner || session.owner_address,
+                deposited: session.deposited || '0',
+                maxSpend: session.maxSpend || session.max_spend || '0',
+                spent: released.toFixed(6),
                 remaining: remaining.toFixed(6),
-                paymentCount: session.payment_count || 0,
-                expiresAt: session.expires_at,
-                depositTxHash: session.deposit_tx_hash,
-                active: session.status === 'active',
-                utilizationPercent: maxSpend > 0 ? ((spent / maxSpend) * 100).toFixed(2) : '0'
+                expiresAt: session.expiresAt || session.expiry,
+                active: session.isActive,
+                utilizationPercent: deposited > 0 ? ((released / deposited) * 100).toFixed(2) : '0'
             });
         } catch (err) {
             return errorContent(err instanceof Error ? err.message : 'Failed to get session status');
@@ -2710,14 +2713,17 @@ server.tool(
     async ({ sessionId }) => {
         try {
             const response = await fetch(`${config.relayCoreApi}/api/sessions/${sessionId}/refund`, {
-                method: 'POST'
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
             });
 
             if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
                 return formatContent({
                     success: false,
                     sessionId,
-                    error: 'Refund failed'
+                    error: errorData.message || errorData.error || 'Refund failed',
+                    hint: 'Ensure the session exists and has remaining balance'
                 });
             }
 
@@ -2725,9 +2731,9 @@ server.tool(
             return formatContent({
                 success: true,
                 sessionId,
-                refundedAmount: data.amount,
+                refundedAmount: data.refundAmount || data.amount,
                 txHash: data.txHash,
-                explorer: `https://explorer.cronos.org/testnet/tx/${data.txHash}`
+                explorer: data.txHash ? `https://explorer.cronos.org/testnet/tx/${data.txHash}` : 'N/A'
             });
         } catch (err) {
             return errorContent(err instanceof Error ? err.message : 'Failed to refund session');
@@ -2746,24 +2752,28 @@ server.tool(
     async ({ sessionId }) => {
         try {
             const response = await fetch(`${config.relayCoreApi}/api/sessions/${sessionId}/close`, {
-                method: 'POST'
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
             });
 
             if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
                 return formatContent({
                     success: false,
                     sessionId,
-                    error: 'Close failed'
+                    error: errorData.message || errorData.error || 'Close failed',
+                    hint: 'Ensure the session exists and is not already closed'
                 });
             }
 
             const data = await response.json();
             return formatContent({
                 success: true,
-                sessionId,
-                refundedAmount: data.refunded,
+                sessionId: data.session_id || sessionId,
+                refundedAmount: data.refunded || data.refundAmount,
                 txHash: data.txHash,
-                status: "closed"
+                status: data.status || "closed",
+                explorer: data.txHash ? `https://explorer.cronos.org/testnet/tx/${data.txHash}` : 'N/A'
             });
         } catch (err) {
             return errorContent(err instanceof Error ? err.message : 'Failed to close session');

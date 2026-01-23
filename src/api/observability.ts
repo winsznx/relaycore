@@ -90,19 +90,77 @@ router.get('/metrics', (_req, res) => {
  */
 router.get('/metrics/json', async (_req, res) => {
     try {
-        const systemMetrics = await observability.getSystemMetrics();
+        const { supabase } = await import('../lib/supabase.js');
+        const inMemoryMetrics = await observability.getSystemMetrics();
+
+        // Fetch real database metrics
+        const [paymentsRes, sessionsRes, invocationsRes, servicesRes] = await Promise.allSettled([
+            supabase.from('payments').select('id, created_at, status', { count: 'exact' }),
+            supabase.from('escrow_sessions').select('id, is_active, created_at', { count: 'exact' }),
+            supabase.from('agent_invocations').select('id, created_at, status, latency_ms', { count: 'exact' }),
+            supabase.from('services').select('id', { count: 'exact' })
+        ]);
+
+        // Calculate real metrics from database
+        const payments = paymentsRes.status === 'fulfilled' ? paymentsRes.value : { count: 0, data: [] };
+        const sessions = sessionsRes.status === 'fulfilled' ? sessionsRes.value : { count: 0, data: [] };
+        const invocations = invocationsRes.status === 'fulfilled' ? invocationsRes.value : { count: 0, data: [] };
+        const services = servicesRes.status === 'fulfilled' ? servicesRes.value : { count: 0, data: [] };
+
+        // Calculate success rate from invocations
+        const successfulInvocations = (invocations.data || []).filter(
+            (inv: any) => inv.status === 'success' || inv.status === 'completed'
+        ).length;
+        const totalInvocations = invocations.count || (invocations.data?.length || 0);
+        const successRate = totalInvocations > 0 ? (successfulInvocations / totalInvocations) * 100 : 100;
+
+        // Calculate average latency from invocations
+        const latencies = (invocations.data || [])
+            .filter((inv: any) => inv.latency_ms > 0)
+            .map((inv: any) => inv.latency_ms);
+        const avgLatencyMs = latencies.length > 0
+            ? latencies.reduce((a: number, b: number) => a + b, 0) / latencies.length
+            : inMemoryMetrics.averageLatencyMs || 200;
+
+        // Build requests per minute history (last 12 data points for sparkline)
+        const now = new Date();
+        const requestsPerMinute: number[] = [];
+        for (let i = 11; i >= 0; i--) {
+            const startTime = new Date(now.getTime() - (i + 1) * 60 * 1000);
+            const endTime = new Date(now.getTime() - i * 60 * 1000);
+            const count = (invocations.data || []).filter((inv: any) => {
+                const createdAt = new Date(inv.created_at);
+                return createdAt >= startTime && createdAt < endTime;
+            }).length;
+            requestsPerMinute.push(count);
+        }
 
         res.json({
-            system: systemMetrics,
+            system: {
+                requestsTotal: totalInvocations || payments.count || 0,
+                requestsSuccessful: successfulInvocations,
+                requestsFailed: totalInvocations - successfulInvocations,
+                averageLatencyMs: Math.round(avgLatencyMs),
+                activeConnections: (sessions.data || []).filter((s: any) => s.is_active).length,
+                memoryUsageMb: inMemoryMetrics.memoryUsageMb,
+                cpuPercent: inMemoryMetrics.cpuPercent,
+                uptime: inMemoryMetrics.uptime,
+                requestsPerMinute,
+                successRate: Math.round(successRate * 10) / 10,
+                totalPayments: payments.count || 0,
+                totalSessions: sessions.count || 0,
+                totalServices: services.count || 0,
+                activeSessions: (sessions.data || []).filter((s: any) => s.is_active).length
+            },
             histograms: {
                 httpRequestDuration: observability.metrics.getHistogramStats('http_request_duration_ms'),
                 mcpCallDuration: observability.metrics.getHistogramStats('mcp_call_duration_ms')
             },
             counters: {
-                totalRequests: observability.metrics.getCounter('http_requests_total'),
-                totalErrors: observability.metrics.getCounter('http_errors_total'),
+                totalRequests: totalInvocations,
+                totalErrors: totalInvocations - successfulInvocations,
                 totalMcpCalls: observability.metrics.getCounter('mcp_calls_total'),
-                totalPayments: observability.metrics.getCounter('x402_payments_total')
+                totalPayments: payments.count || 0
             }
         });
     } catch (error) {

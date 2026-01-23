@@ -173,6 +173,39 @@ router.post('/:sessionId/refund', async (req, res) => {
 });
 
 /**
+ * POST /api/sessions/:sessionId/close
+ *
+ * Close session and refund remaining balance
+ */
+router.post('/:sessionId/close', async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+
+        // First refund the session
+        const result = await sessionService.refundSession(sessionId);
+
+        logger.info('Session closed via API', {
+            sessionId,
+            refunded: result.refundAmount,
+            txHash: result.txHash
+        });
+
+        res.json({
+            session_id: sessionId,
+            status: 'closed',
+            refunded: result.refundAmount,
+            txHash: result.txHash
+        });
+    } catch (error) {
+        logger.error('Session close error', error as Error);
+        res.status(500).json({
+            error: 'Failed to close session',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
+/**
  * POST /api/sessions/:sessionId/settle-x402
  *
  * Settle x402/EIP-3009 payment via Facilitator

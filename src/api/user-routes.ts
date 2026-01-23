@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
-import { authenticateApiKey, type AuthenticatedRequest } from '../../middleware/api-auth.js';
+import { authenticateApiKey, type AuthenticatedRequest } from '../middleware/api-auth.js';
 
 const router = Router();
 

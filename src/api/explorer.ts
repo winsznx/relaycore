@@ -139,16 +139,67 @@ router.get('/overview', async (req, res) => {
         );
 
         // Calculate real success rate from payments
-        const successfulPayments = (payments || []).filter(p => p.status === 'success' || p.status === 'settled').length;
+        const successfulPayments = (payments || []).filter(p => p.status === 'success' || p.status === 'settled' || p.status === 'completed').length;
         const totalPayments = (payments || []).length;
         const successRate = totalPayments > 0 ? Math.round((successfulPayments / totalPayments) * 100) : 100;
+
+        // Build sparkline data for last 12 days
+        const now = new Date();
+        const sessionSparkline: number[] = [];
+        const agentSparkline: number[] = [];
+        const volumeSparkline: number[] = [];
+        const successSparkline: number[] = [];
+
+        for (let i = 11; i >= 0; i--) {
+            const dayStart = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+            dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+
+            // Count sessions created on this day
+            const daySessions = (sessions || []).filter(s => {
+                const created = new Date(s.created_at);
+                return created >= dayStart && created < dayEnd;
+            }).length;
+            sessionSparkline.push(daySessions);
+
+            // Count agents created/active on this day
+            const dayAgents = (agents || []).filter(a => {
+                const created = new Date(a.created_at);
+                return created >= dayStart && created < dayEnd;
+            }).length;
+            agentSparkline.push(dayAgents);
+
+            // Calculate volume on this day
+            const dayVolume = (payments || []).filter(p => {
+                const created = new Date(p.created_at);
+                return created >= dayStart && created < dayEnd;
+            }).reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+            volumeSparkline.push(dayVolume);
+
+            // Calculate success rate on this day
+            const dayPayments = (payments || []).filter(p => {
+                const created = new Date(p.created_at);
+                return created >= dayStart && created < dayEnd;
+            });
+            const daySuccessful = dayPayments.filter(p =>
+                p.status === 'success' || p.status === 'settled' || p.status === 'completed'
+            ).length;
+            const dayRate = dayPayments.length > 0 ? (daySuccessful / dayPayments.length) * 100 : successRate;
+            successSparkline.push(Math.round(dayRate));
+        }
 
         res.json({
             stats: {
                 totalSessions,
                 activeAgents,
                 totalVolume: totalVolume.toFixed(2),
-                successRate
+                successRate,
+                sparklines: {
+                    sessions: sessionSparkline,
+                    agents: agentSparkline,
+                    volume: volumeSparkline,
+                    success: successSparkline
+                }
             },
             sessions: (sessions || []).map(s => ({
                 sessionId: s.session_id,
@@ -356,12 +407,14 @@ router.get('/sessions/:sessionId', async (req, res) => {
  *
  * Fetches all transactions including on-chain, RWA state transitions, and session payments.
  * Type filter: 'transfer', 'agent_payment', 'rwa_transition', 'session_payment'
+ * User filter: address to filter transactions involving this user (as from or to)
  */
 router.get('/transactions', async (req, res) => {
     try {
-        const { limit = 50, offset = 0, type } = req.query;
+        const { limit = 50, offset = 0, type, user } = req.query;
         const limitNum = Number(limit);
         const offsetNum = Number(offset);
+        const userAddress = user ? String(user).toLowerCase() : null;
 
         interface Transaction {
             txHash: string;
@@ -389,6 +442,9 @@ router.get('/transactions', async (req, res) => {
             if (type) {
                 onChainQuery = onChainQuery.eq('type', type);
             }
+            if (userAddress) {
+                onChainQuery = onChainQuery.or(`from_address.ilike.${userAddress},to_address.ilike.${userAddress}`);
+            }
 
             const { data: onChainData } = await onChainQuery;
 
@@ -409,11 +465,17 @@ router.get('/transactions', async (req, res) => {
 
         // Fetch RWA state transitions
         if (!type || type === 'rwa_transition') {
-            const { data: rwaData } = await supabase
+            let rwaQuery = supabase
                 .from('rwa_state_transitions')
                 .select('*')
                 .order('transitioned_at', { ascending: false })
                 .limit(limitNum + offsetNum);
+
+            if (userAddress) {
+                rwaQuery = rwaQuery.ilike('agent_address', userAddress);
+            }
+
+            const { data: rwaData } = await rwaQuery;
 
             (rwaData || []).forEach(t => {
                 allTransactions.push({
@@ -434,27 +496,71 @@ router.get('/transactions', async (req, res) => {
             });
         }
 
-        // Fetch session payments
+        // Fetch session payments with owner info from escrow_sessions
         if (!type || type === 'session_payment') {
-            const { data: sessionPayData } = await supabase
+            let sessionPayQuery = supabase
                 .from('session_payments')
-                .select('*')
+                .select(`
+                    *,
+                    escrow_sessions!session_payments_session_id_fkey(owner_address)
+                `)
                 .order('created_at', { ascending: false })
                 .limit(limitNum + offsetNum);
 
-            (sessionPayData || []).forEach(p => {
+            // If filtering by user, also filter by agent_address
+            if (userAddress) {
+                sessionPayQuery = sessionPayQuery.ilike('agent_address', userAddress);
+            }
+
+            const { data: sessionPayData } = await sessionPayQuery;
+
+            // Also fetch payments where user is the session owner
+            let ownerPayments: any[] = [];
+            if (userAddress) {
+                const { data: ownerSessions } = await supabase
+                    .from('escrow_sessions')
+                    .select('session_id')
+                    .ilike('owner_address', userAddress);
+
+                if (ownerSessions && ownerSessions.length > 0) {
+                    const sessionIds = ownerSessions.map(s => s.session_id);
+                    const { data: ownerPayData } = await supabase
+                        .from('session_payments')
+                        .select(`
+                            *,
+                            escrow_sessions!session_payments_session_id_fkey(owner_address)
+                        `)
+                        .in('session_id', sessionIds)
+                        .order('created_at', { ascending: false })
+                        .limit(limitNum + offsetNum);
+
+                    ownerPayments = ownerPayData || [];
+                }
+            }
+
+            // Combine and deduplicate
+            const allSessionPayments = [...(sessionPayData || []), ...ownerPayments];
+            const seenPaymentIds = new Set<string>();
+
+            allSessionPayments.forEach((p: any) => {
+                const paymentKey = p.id || p.execution_id || `${p.session_id}_${p.created_at}`;
+                if (seenPaymentIds.has(paymentKey)) return;
+                seenPaymentIds.add(paymentKey);
+
+                const ownerAddress = p.escrow_sessions?.owner_address || '';
                 allTransactions.push({
                     txHash: p.tx_hash || p.facilitator_tx_hash || `session_${p.id}`,
                     type: 'session_payment',
-                    from: p.session_id || '',
+                    from: ownerAddress, // The session owner who paid
                     to: p.agent_address || '',
                     value: p.amount || '0',
-                    status: p.status || 'success',
+                    status: p.status || 'completed',
                     timestamp: new Date(p.created_at),
                     metadata: {
                         sessionId: p.session_id,
                         agentName: p.agent_name,
-                        paymentMethod: p.payment_method
+                        paymentMethod: p.payment_method,
+                        sessionOwner: ownerAddress
                     }
                 });
             });

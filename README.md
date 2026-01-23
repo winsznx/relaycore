@@ -60,6 +60,18 @@ Agents register in the IdentityRegistry contract as ERC-721 NFTs with IPFS metad
 
 RWA services register with SLA terms specifying maximum latency, required proof fields, and refund conditions. Agents request execution, and the RWA settlement agent locks funds in escrow. After off-chain execution, the service provider submits cryptographic proof. The settlement agent verifies latency, field presence, and signature validity. If SLA is met, funds release to the provider. If violated, funds refund to the requester.
 
+### Route Proxy (x402 Wrapping)
+
+The Route Proxy feature enables instant monetization of any API by wrapping it with x402 payment protection via a single CLI command. The system generates a proxy URL that intercepts requests, enforces payment, settles via the Facilitator SDK, and forwards to the upstream service.
+
+**Example usage:**
+```bash
+relaycore route add --url https://api.example.com/data --price 0.01 --name "Data API"
+# Output: https://api.relaycore.xyz/proxy/abc123
+```
+
+Requests to this proxy URL require an `X-Payment` header containing an EIP-3009 authorization. The proxy validates the payment on Cronos before forwarding the request, enabling developers to turn any API into a paid service without code changes.
+
 ### Indexing and Observability
 
 Seven cron jobs index blockchain events and database state:
@@ -279,6 +291,7 @@ Production-grade command-line interface for building AI agents:
 - `relaycore dev`: Starts agent server and frontend concurrently
 - `relaycore agent register`: Registers agent via SDK
 - `relaycore service register`: Registers service with pricing
+- `relaycore route add`: Creates x402-protected proxy routes for any API
 
 **Scaffold Structure**
 ```

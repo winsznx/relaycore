@@ -129,6 +129,11 @@ async function startServers() {
     const taskRoutes = await import('./task-routes.js');
     app.use('/api/tasks', taskRoutes.default);
 
+    // Route Proxy Routes (x402-protected API proxying)
+    const routeProxyModule = await import('./route-proxy.js');
+    app.use('/api/routes', routeProxyModule.default);
+    app.use('/proxy', routeProxyModule.proxyRouter);
+
     // Meta-Agent Routes (Agent discovery and hiring)
     const metaAgentRoutes = await import('./meta-agent-routes.js');
     app.use('/api/meta-agent', metaAgentRoutes.default);
