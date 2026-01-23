@@ -929,7 +929,7 @@ server.tool(
     async ({ instrument, timeframe, count = 100 }) => {
         try {
             // Call Crypto.com MCP's get_candlestick tool
-            const result = await callCryptoComMcp('get_candlestick', {
+            const result = await callCryptoComTool('get_candlestick', {
                 instrument_name: instrument,
                 timeframe,
                 count
@@ -985,7 +985,7 @@ server.tool(
     async ({ type }) => {
         try {
             // Call Crypto.com MCP's get_instruments tool
-            const result = await callCryptoComMcp('get_instruments', type ? { type } : {});
+            const result = await callCryptoComTool('get_instruments', type ? { type } : {});
 
             return formatContent({
                 source: "crypto.com_mcp",
@@ -1040,7 +1040,7 @@ server.tool(
     async ({ instrument, count = 50 }) => {
         try {
             // Try MCP first
-            const result = await callCryptoComMcp('get_trades', {
+            const result = await callCryptoComTool('get_trades', {
                 instrument_name: instrument,
                 count: Math.min(count, 150)
             });
@@ -1091,7 +1091,7 @@ server.tool(
     async () => {
         try {
             // Try MCP first
-            const result = await callCryptoComMcp('get_all_tickers', {});
+            const result = await callCryptoComTool('get_all_tickers', {});
 
             return formatContent({
                 source: "crypto.com_mcp",
@@ -1142,7 +1142,7 @@ server.tool(
     async ({ instrument, valuationType }) => {
         try {
             // Try MCP first
-            const result = await callCryptoComMcp('get_valuations', {
+            const result = await callCryptoComTool('get_valuations', {
                 instrument_name: instrument,
                 valuation_type: valuationType
             });
