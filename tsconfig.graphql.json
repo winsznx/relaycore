@@ -3,7 +3,7 @@
         "outDir": "./dist",
         "rootDir": "./src",
         "module": "ESNext",
-        "moduleResolution": "bundler",
+        "moduleResolution": "node",
         "target": "ES2022",
         "lib": [
             "ES2022"
@@ -17,8 +17,9 @@
         "declaration": false,
         "sourceMap": true,
         "noEmitOnError": false,
-        "allowImportingTsExtensions": true,
-        "noEmit": false
+        "noImplicitAny": false,
+        "noUnusedLocals": false,
+        "noUnusedParameters": false
     },
     "include": [
         "src/api/**/*",
