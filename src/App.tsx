@@ -917,7 +917,7 @@ function WhoItsForSection() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button
               className="bg-[#111111] text-white hover:bg-black rounded-full px-10 py-6 text-lg font-semibold shadow-xl shadow-black/10"
-              onClick={() => window.location.href = '/docs'}
+              onClick={() => window.location.href = 'https://docs.relaycore.xyz'}
             >
               Read Documentation
             </Button>
@@ -949,7 +949,7 @@ function Footer() {
             <div className="flex flex-col sm:flex-row gap-4">
               <Button
                 className="bg-white text-[#2A4425] hover:bg-gray-100 rounded-full px-8 py-6 text-base font-bold shadow-lg"
-                onClick={() => window.location.href = '/docs'}
+                onClick={() => window.location.href = 'https://docs.relaycore.xyz'}
               >
                 Documentation
               </Button>
@@ -971,15 +971,16 @@ function Footer() {
                 <li><a href="#protocol-flow" className="hover:text-white transition-colors">Protocol Flow</a></li>
                 <li><a href="#intelligence" className="hover:text-white transition-colors">Intelligence</a></li>
                 <li><Link to="/explorer" className="hover:text-white transition-colors">Explorer</Link></li>
+                <li><Link to="/marketplace" className="hover:text-white transition-colors">Marketplace</Link></li>
               </ul>
             </div>
             <div className="space-y-6">
               <h4 className="font-bold text-lg">Resources</h4>
               <ul className="space-y-4 text-white/70">
-                <li><Link to="/docs" className="hover:text-white transition-colors">Documentation</Link></li>
+                <li><a href="https://docs.relaycore.xyz" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Documentation</a></li>
                 <li><Link to="/playground" className="hover:text-white transition-colors">Playground</Link></li>
                 <li><a href="https://github.com/winsznx/relaycore" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">GitHub</a></li>
-                <li><Link to="/docs/api/graphql" className="hover:text-white transition-colors">API Reference</Link></li>
+                <li><a href="https://docs.relaycore.xyz/api-reference/overview" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">API Reference</a></li>
               </ul>
             </div>
             <div className="space-y-6">
