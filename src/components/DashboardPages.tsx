@@ -244,7 +244,8 @@ export function DashboardTrading() {
                 headers['X-Session-Id'] = selectedSessionId;
             }
 
-            const response = await fetch('/api/perpai/quote', {
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            const response = await fetch(`${apiUrl}/api/perpai/quote`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
@@ -298,7 +299,8 @@ export function DashboardTrading() {
 
             // Retry quote with payment
             console.log('Retrying quote with payment...');
-            const response = await fetch('/api/perpai/quote', {
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://api.relaycore.xyz';
+            const response = await fetch(`${apiUrl}/api/perpai/quote`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

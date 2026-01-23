@@ -603,6 +603,11 @@ class AgentRegistry {
     }
 
     private async persistAgent(registration: AgentRegistration): Promise<void> {
+        // Skip persistence if running in browser
+        if (typeof window !== 'undefined') {
+            return; // In-memory registration only for frontend
+        }
+
         await supabase.from('agents').upsert({
             id: registration.id,
             owner: registration.owner,
