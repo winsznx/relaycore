@@ -1,0 +1,302 @@
+---
+title: Route Proxy
+description: Create x402-protected proxy routes for any API endpoint
+---
+
+## Overview
+
+The Route Proxy feature allows you to wrap any existing API with **x402 payment protection** without modifying the upstream service. When you create a route, RelayCore generates a proxy URL that:
+
+1. Intercepts incoming requests
+2. Requires x402 payment before proceeding
+3. Verifies and settles the payment on Cronos
+4. Forwards the request to your upstream API
+5. Returns the response to the caller
+
+This enables **instant monetization** of any API you own or have access to.
+
+---
+
+## Commands
+
+### `route add`
+
+Create a new x402-protected proxy route.
+
+```bash
+relaycore route add [options]
+```
+
+**Options**:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-u, --url <url>` | Upstream API URL to proxy | Required |
+| `-m, --method <method>` | HTTP method (GET, POST, PUT, DELETE) | `GET` |
+| `-p, --price <price>` | Price per call in USDC | `0.01` |
+| `-n, --name <name>` | Display name for the route | Required |
+| `--pay-to <address>` | Wallet address to receive payments | Your wallet |
+
+**Interactive Mode**:
+
+If required options are omitted, the CLI will prompt you interactively:
+
+```bash
+relaycore route add
+
+? Route name: Weather API
+? Upstream API URL: https://api.weather.example.com/forecast
+? HTTP Method: GET
+? Price per call (USDC): 0.05
+```
+
+**Output**:
+
+```
+Route Created Successfully
+
+Route ID:    a1b2c3d4-e5f6-7890-abcd-ef1234567890
+Name:        Weather API
+Method:      GET
+Price:       $0.05 USDC
+
+Proxy URL:   https://api.relaycore.xyz/proxy/a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+Requests to the proxy URL will require x402 payment.
+```
+
+---
+
+### `route list`
+
+List all your registered routes with usage statistics.
+
+```bash
+relaycore route list
+```
+
+**Output**:
+
+```
+Your Routes
+
+Found 2 route(s):
+
+Weather API
+  ID:       a1b2c3d4-e5f6-7890-abcd-ef1234567890
+  Method:   GET
+  Price:    $0.05 USDC
+  Proxy:    https://api.relaycore.xyz/proxy/a1b2c3d4...
+  Requests: 142
+  Revenue:  $7.10 USDC
+
+Stock Data API
+  ID:       b2c3d4e5-f6a7-8901-bcde-f12345678901
+  Method:   POST
+  Price:    $0.10 USDC
+  Proxy:    https://api.relaycore.xyz/proxy/b2c3d4e5...
+  Requests: 89
+  Revenue:  $8.90 USDC
+```
+
+---
+
+### `route remove`
+
+Delete a route. This deactivates the proxy URL.
+
+```bash
+relaycore route remove <routeId>
+```
+
+**Example**:
+
+```bash
+relaycore route remove a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+? Are you sure you want to remove this route? Yes
+
+Route removed successfully
+```
+
+---
+
+### `route test`
+
+Test a route to see the x402 payment requirements without making a payment.
+
+```bash
+relaycore route test <routeId>
+```
+
+**Output**:
+
+```
+Test Route
+
+Payment Required (402)
+
+Payment Requirements:
+  Network:  cronos-testnet
+  Amount:   50000 base units (0.05 USDC)
+  Pay To:   0x1234...abcd
+  Asset:    0xc01efAaF7C5C61bEbFAeb358E1161b537b8bC0e0
+```
+
+---
+
+## API Endpoints
+
+The Route Proxy feature exposes the following REST endpoints:
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `POST` | `/api/routes` | Create a new route | API Key |
+| `GET` | `/api/routes` | List your routes | API Key |
+| `DELETE` | `/api/routes/:id` | Delete a route | API Key |
+| `ALL` | `/proxy/:routeId/*` | Proxy handler | x402 Payment |
+
+---
+
+## How the Proxy Works
+
+### Request Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Agent or Client                              │
+└─────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   │ 1. Request to /proxy/:routeId
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        RelayCore Proxy                               │
+│                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────┐ │
+│  │ 2. Check for X-Payment header                                   │ │
+│  │    - If missing: Return 402 with PaymentRequirements            │ │
+│  │    - If present: Continue to step 3                             │ │
+│  └─────────────────────────────────────────────────────────────────┘ │
+│                                 │                                    │
+│                                 ▼                                    │
+│  ┌─────────────────────────────────────────────────────────────────┐ │
+│  │ 3. Verify Payment via Facilitator                               │ │
+│  │    - Validate EIP-3009 signature                                │ │
+│  │    - Check amount and recipient                                 │ │
+│  └─────────────────────────────────────────────────────────────────┘ │
+│                                 │                                    │
+│                                 ▼                                    │
+│  ┌─────────────────────────────────────────────────────────────────┐ │
+│  │ 4. Settle Payment On-Chain                                      │ │
+│  │    - Execute USDC transfer via Facilitator                      │ │
+│  │    - Record transaction hash                                    │ │
+│  └─────────────────────────────────────────────────────────────────┘ │
+│                                 │                                    │
+│                                 ▼                                    │
+│  ┌─────────────────────────────────────────────────────────────────┐ │
+│  │ 5. Forward Request to Upstream                                  │ │
+│  │    - Inject secret headers if configured                        │ │
+│  │    - Pass through query params and body                         │ │
+│  └─────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   │ 6. Return response
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Upstream API                                  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Payment Response (402)
+
+When a request is made without payment, the proxy returns:
+
+```json
+{
+  "error": "Payment Required",
+  "paymentId": "pay_a1b2c3d4_1674567890",
+  "paymentRequirements": {
+    "scheme": "exact",
+    "network": "cronos-testnet",
+    "payTo": "0x1234...abcd",
+    "asset": "0xc01efAaF7C5C61bEbFAeb358E1161b537b8bC0e0",
+    "maxAmountRequired": "50000",
+    "maxTimeoutSeconds": 300,
+    "resource": "/proxy/a1b2c3d4",
+    "description": "Weather API"
+  },
+  "message": "Payment of $0.05 USDC required",
+  "network": "cronos-testnet"
+}
+```
+
+### Making a Paid Request
+
+To make a paid request, generate an EIP-3009 payment header using the Facilitator SDK:
+
+```typescript
+import { Facilitator } from '@crypto.com/facilitator-client';
+import { ethers } from 'ethers';
+
+const facilitator = new Facilitator({ network: 'cronos-testnet' });
+const wallet = new ethers.Wallet(privateKey, provider);
+
+// Generate payment header
+const paymentHeader = await facilitator.generatePaymentHeader({
+  to: paymentRequirements.payTo,
+  value: paymentRequirements.maxAmountRequired,
+  signer: wallet,
+  validBefore: Math.floor(Date.now() / 1000) + 300
+});
+
+// Make request with payment
+const response = await fetch('https://api.relaycore.xyz/proxy/a1b2c3d4', {
+  headers: {
+    'X-Payment': paymentHeader
+  }
+});
+```
+
+---
+
+## Database Schema
+
+Routes are stored in the `routes` table:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `user_id` | TEXT | Owner wallet address |
+| `name` | TEXT | Display name |
+| `upstream_url` | TEXT | Target API URL |
+| `method` | TEXT | HTTP method |
+| `price_usdc` | DECIMAL | Price per call |
+| `pay_to` | TEXT | Payment recipient |
+| `secret_headers` | JSONB | Encrypted upstream headers |
+| `request_count` | INTEGER | Total requests |
+| `revenue` | DECIMAL | Total earned |
+| `is_active` | BOOLEAN | Active flag |
+| `created_at` | TIMESTAMP | Creation time |
+
+---
+
+## Troubleshooting
+
+### "Route not found"
+
+The route ID does not exist or has been deactivated. Verify the route ID with `relaycore route list`.
+
+### "Payment verification failed"
+
+The x402 payment header is invalid. Common causes:
+- Expired authorization (older than 5 minutes)
+- Insufficient USDC balance
+- Wrong recipient address
+- Invalid signature
+
+### "Proxy error"
+
+The upstream API failed to respond. Check that:
+- The upstream URL is accessible
+- Secret headers (API keys) are correctly configured
+- The upstream service is online
