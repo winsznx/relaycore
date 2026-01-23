@@ -103,7 +103,7 @@ RETURNS void AS $$
 BEGIN
   REFRESH MATERIALIZED VIEW CONCURRENTLY service_composite_metrics;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 -- Hourly aggregation view for dashboard
 CREATE MATERIALIZED VIEW IF NOT EXISTS service_metrics_hourly AS
@@ -160,4 +160,4 @@ BEGIN
     p_reputation_score
   );
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;

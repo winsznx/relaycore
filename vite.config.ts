@@ -32,12 +32,43 @@ export default defineConfig({
     }
   },
   optimizeDeps: {
-    exclude: ['@sentry/node-core', '@sentry/node'],
-    entries: ['src/**/*.{ts,tsx}'], // Only scan src folder
+    exclude: [
+      '@sentry/node-core',
+      '@sentry/node',
+      'telegraf',
+      '@telegraf/session',
+      'sandwich-stream',
+      'fsevents'
+    ],
+    entries: ['src/**/*.{ts,tsx}'],
   },
   build: {
     rollupOptions: {
-      external: ['@sentry/node-core', '@sentry/node', 'node:util', 'node:fs', 'node:path'],
+      external: [
+        '@sentry/node-core',
+        '@sentry/node',
+        'telegraf',
+        '@telegraf/session',
+        'sandwich-stream',
+        'fsevents',
+        'node:util',
+        'node:fs',
+        'node:fs/promises',
+        'node:path',
+        'node:crypto',
+        'node:http',
+        'node:https',
+        'node:url',
+        'node:stream',
+        'stream',
+        'crypto',
+        'http',
+        'https',
+        'url',
+        'path',
+        'fs',
+        'fs/promises'
+      ],
     },
   },
 })

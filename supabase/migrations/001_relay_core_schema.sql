@@ -85,41 +85,53 @@ ALTER TABLE agent_activity ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_reputation ENABLE ROW LEVEL SECURITY;
 
 -- Public read access for all tables
-CREATE POLICY IF NOT EXISTS "Public read access" ON payments
+DROP POLICY IF EXISTS "Public read access" ON payments;
+CREATE POLICY "Public read access" ON payments
   FOR SELECT USING (true);
 
-CREATE POLICY IF NOT EXISTS "Public read access" ON indexer_state
+DROP POLICY IF EXISTS "Public read access" ON indexer_state;
+CREATE POLICY "Public read access" ON indexer_state
   FOR SELECT USING (true);
 
-CREATE POLICY IF NOT EXISTS "Public read access" ON agent_activity
+DROP POLICY IF EXISTS "Public read access" ON agent_activity;
+CREATE POLICY "Public read access" ON agent_activity
   FOR SELECT USING (true);
 
-CREATE POLICY IF NOT EXISTS "Public read access" ON agent_reputation
+DROP POLICY IF EXISTS "Public read access" ON agent_reputation;
+CREATE POLICY "Public read access" ON agent_reputation
   FOR SELECT USING (true);
 
 -- Service role can insert/update (for backend indexers)
-CREATE POLICY IF NOT EXISTS "Service role can insert" ON payments
+DROP POLICY IF EXISTS "Service role can insert" ON payments;
+CREATE POLICY "Service role can insert" ON payments
   FOR INSERT WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Service role can update" ON payments
+DROP POLICY IF EXISTS "Service role can update" ON payments;
+CREATE POLICY "Service role can update" ON payments
   FOR UPDATE USING (true);
 
-CREATE POLICY IF NOT EXISTS "Service role can insert" ON indexer_state
+DROP POLICY IF EXISTS "Service role can insert" ON indexer_state;
+CREATE POLICY "Service role can insert" ON indexer_state
   FOR INSERT WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Service role can update" ON indexer_state
+DROP POLICY IF EXISTS "Service role can update" ON indexer_state;
+CREATE POLICY "Service role can update" ON indexer_state
   FOR UPDATE USING (true);
 
-CREATE POLICY IF NOT EXISTS "Service role can insert" ON agent_activity
+DROP POLICY IF EXISTS "Service role can insert" ON agent_activity;
+CREATE POLICY "Service role can insert" ON agent_activity
   FOR INSERT WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Service role can update" ON agent_activity
+DROP POLICY IF EXISTS "Service role can update" ON agent_activity;
+CREATE POLICY "Service role can update" ON agent_activity
   FOR UPDATE USING (true);
 
-CREATE POLICY IF NOT EXISTS "Service role can insert" ON agent_reputation
+DROP POLICY IF EXISTS "Service role can insert" ON agent_reputation;
+CREATE POLICY "Service role can insert" ON agent_reputation
   FOR INSERT WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Service role can update" ON agent_reputation
+DROP POLICY IF EXISTS "Service role can update" ON agent_reputation;
+CREATE POLICY "Service role can update" ON agent_reputation
   FOR UPDATE USING (true);
 
 -- ============================================

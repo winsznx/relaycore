@@ -1,29 +1,26 @@
--- Create agent_activity table for tracking agent service registrations and activity
-CREATE TABLE IF NOT EXISTS agent_activity (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    agent_id TEXT NOT NULL,
-    activity_type TEXT NOT NULL CHECK (activity_type IN ('service_registration', 'service_call', 'validation', 'trade', 'other')),
-    service_name TEXT,
-    description TEXT,
-    metadata JSONB DEFAULT '{}',
-    timestamp TIMESTAMPTZ DEFAULT NOW(),
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- Add missing columns to existing agent_activity table
+ALTER TABLE agent_activity 
+  ADD COLUMN IF NOT EXISTS service_name TEXT,
+  ADD COLUMN IF NOT EXISTS description TEXT;
 
--- Enable RLS
-ALTER TABLE agent_activity ENABLE ROW LEVEL SECURITY;
+-- Update activity_type constraint to include new types
+ALTER TABLE agent_activity 
+  DROP CONSTRAINT IF EXISTS agent_activity_activity_type_check;
 
--- Public read access
+ALTER TABLE agent_activity 
+  ADD CONSTRAINT agent_activity_activity_type_check 
+  CHECK (activity_type IN ('service_registration', 'service_call', 'validation', 'trade', 'other'));
+
+-- RLS policies (using DROP/CREATE pattern)
+DROP POLICY IF EXISTS "Public read agent_activity" ON agent_activity;
 CREATE POLICY "Public read agent_activity" ON agent_activity 
     FOR SELECT 
     USING (true);
 
--- Service write access
+DROP POLICY IF EXISTS "Service write agent_activity" ON agent_activity;
 CREATE POLICY "Service write agent_activity" ON agent_activity 
     FOR ALL 
     USING (true);
 
--- Create indexes
-CREATE INDEX idx_agent_activity_agent ON agent_activity(agent_id);
-CREATE INDEX idx_agent_activity_type ON agent_activity(activity_type);
-CREATE INDEX idx_agent_activity_timestamp ON agent_activity(timestamp DESC);
+-- Create additional indexes (note: some may already exist from 001_relay_core_schema.sql)
+CREATE INDEX IF NOT EXISTS idx_agent_activity_service ON agent_activity(service_name) WHERE service_name IS NOT NULL;

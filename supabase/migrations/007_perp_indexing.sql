@@ -165,7 +165,7 @@ RETURNS TABLE(
   FROM funding_rates_timeseries fr
   WHERE (p_venue IS NULL OR fr.venue = p_venue)
   ORDER BY fr.venue, fr.token, fr.timestamp DESC;
-$$ LANGUAGE SQL;
+$$ LANGUAGE SQL SET search_path = public;
 
 -- Function to get venue liquidity
 CREATE OR REPLACE FUNCTION get_venue_liquidity(p_venue TEXT, p_token TEXT DEFAULT NULL)
@@ -186,7 +186,7 @@ RETURNS TABLE(
   WHERE ls.venue = p_venue
     AND (p_token IS NULL OR ls.token = p_token)
   ORDER BY ls.token, ls.timestamp DESC;
-$$ LANGUAGE SQL;
+$$ LANGUAGE SQL SET search_path = public;
 
 -- Function to handle reorgs
 CREATE OR REPLACE FUNCTION handle_reorg(from_block BIGINT)
@@ -201,7 +201,7 @@ BEGIN
   -- Log the reorg
   RAISE NOTICE 'Reorg handled: deleted all data from block % onwards', from_block;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 -- Enable RLS
 ALTER TABLE funding_rates_timeseries ENABLE ROW LEVEL SECURITY;

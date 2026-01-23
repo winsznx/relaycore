@@ -29,7 +29,7 @@ BEGIN
         api_keys.is_active,
         api_keys.created_at;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = public;
 
 -- Grant execute to service_role
 GRANT EXECUTE ON FUNCTION create_bot_api_key TO service_role;

@@ -47,7 +47,7 @@ SELECT
     COUNT(*) as total_requests,
     COUNT(*) FILTER (WHERE status = 'settled') as successful_settlements,
     COUNT(*) FILTER (WHERE status = 'refunded') as refunds,
-    AVG((verification->>'slaMetrics'->>'latencyMs')::numeric) as avg_latency_ms,
+    AVG((verification->'slaMetrics'->>'latencyMs')::numeric) as avg_latency_ms,
     SUM(price) FILTER (WHERE status = 'settled') as total_revenue
 FROM rwa_execution_requests
 GROUP BY service_id;
