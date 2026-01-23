@@ -1,0 +1,85 @@
+---
+title: Publishing & Deployment
+description: Guide to publishing packages and configuring the RelayCore API
+---
+
+## Package Publishing
+
+RelayCore consists of two primary publishable packages: the **CLI** tool and the **SDK**.
+
+### 1. Publishing the CLI
+
+The CLI is located in `packages/cli`. It is designed to be published to the npm registry as `@relaycore/cli`.
+
+**Prerequisites:**
+- You must be logged in to npm (`npm login`).
+- You must have write access to the `@relaycore` organization.
+
+**Steps:**
+```bash
+# 1. Navigate to CLI package
+cd packages/cli
+
+# 2. Install dependencies & Build
+pnpm install
+pnpm build
+
+# 3. Publish
+npm publish --access public
+```
+
+### 2. Publishing the SDK
+
+The SDK source is located in `src/sdk`. It is configured to be published as `@relaycore/sdk`.
+
+**Steps:**
+```bash
+# 1. Navigate to SDK directory
+cd src/sdk
+
+# 2. Build the SDK
+# This uses tsup to bundle the SDK into dist/
+npm install
+npm run build
+
+# 3. Publish
+npm publish --access public
+```
+
+---
+
+## API Architecture (`api.relaycore.xyz`)
+
+You asked specifically about `api.relaycore.xyz`. This domain is the **Production API Endpoint** for the RelayCore backend services.
+
+### What uses this endpoint?
+1.  **Frontend Dashboard** (`relaycore.xyz`): Fetches agent lists, transaction history, and reputation scores via GraphQL.
+2.  **CLI Tool** (`relaycore`): Authenticates users (`auth login`) and registers agents.
+3.  **Agent SDK**: Agents running in the wild use this endpoint to query discovery data and submit settlement proofs.
+
+### Backend Implementation
+The code used for this API is located in `src/api/`.
+- **Entry Point**: `src/api/graphql-server.ts`
+- **Routes**: `src/api/agent-routes.ts`, `src/api/service-discovery.ts`
+- **Protocol**: GraphQL + REST
+
+### How to deploy it?
+
+To make `api.relaycore.xyz` live, you must deploy the backend service separate from the frontend static site.
+
+**Deployment Steps (e.g., Railway/Render/AWS):**
+1.  **Build**: `pnpm build` (compiles TS to JS in `dist/`).
+2.  **Start Command**: `node dist/api/graphql-server.js`.
+3.  **Environment Variables**:
+    -   `DATABASE_URL`: Supabase connection string.
+    -   `REDIS_URL`: For task queues/caching.
+    -   `JWT_SECRET`: For authentication.
+4.  **DNS Configuration**:
+    -   Point `api.relaycore.xyz` (A Record or CNAME) to your backend deployment URL.
+
+### Configuring Clients
+
+Once deployed, ensure your consumers know where to look:
+
+-   **Frontend**: Set `VITE_API_URL=https://api.relaycore.xyz` in your Vercel project settings.
+-   **CLI**: The CLI defaults to `https://api.relaycore.io` (production) or `https://api-testnet.relaycore.io` in `auth.ts`. You may need to update these constants if you are self-hosting the core infrastructure.
