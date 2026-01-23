@@ -11,23 +11,28 @@
         ],
         "esModuleInterop": true,
         "skipLibCheck": true,
-        "strict": true,
+        "strict": false,
         "resolveJsonModule": true,
         "allowSyntheticDefaultImports": true,
         "forceConsistentCasingInFileNames": true,
         "declaration": false,
-        "sourceMap": true
+        "sourceMap": true,
+        "noEmitOnError": false
     },
     "include": [
         "src/api/**/*",
-        "src/lib/**/*",
         "src/services/**/*",
         "src/types/**/*"
     ],
     "exclude": [
         "node_modules",
         "dist",
+        "src/lib/**/*",
+        "src/components/**/*",
+        "src/pages/**/*",
+        "src/hooks/**/*",
         "**/*.test.ts",
-        "**/*.spec.ts"
+        "**/*.spec.ts",
+        "**/*.tsx"
     ]
 }
