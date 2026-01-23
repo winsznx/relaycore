@@ -69,3 +69,5 @@ ehthumbs.db
 
 # Sentry
 .sentryclirc
+src/sdk/.npmrc
+packages/cli/.npmrc
