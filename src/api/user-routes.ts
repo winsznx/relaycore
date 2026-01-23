@@ -1,8 +1,20 @@
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { authenticateApiKey, type AuthenticatedRequest } from '../../middleware/api-auth.js';
 
 const router = Router();
+
+// Endpoint for CLI/SDK to verify API Key validity
+router.get('/me', authenticateApiKey({ required: true }), (req: any, res) => {
+    const authReq = req as AuthenticatedRequest;
+    res.json({
+        valid: true,
+        id: authReq.apiKey?.id,
+        userId: authReq.walletAddress,
+        permissions: authReq.apiKey?.permissions
+    });
+});
 
 const supabase = createClient(
     process.env.VITE_SUPABASE_URL!,

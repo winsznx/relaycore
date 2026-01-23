@@ -53,10 +53,29 @@ authCommand
         const spinner = ora('Validating API key...').start();
 
         try {
-            // TODO: Validate API key against RelayCore API
+            // Validate API key against RelayCore API
             const baseUrl = answers.environment === 'testnet'
-                ? 'https://api-testnet.relaycore.io'
-                : 'https://api.relaycore.io';
+                ? 'https://api-testnet.relaycore.xyz'
+                : 'https://api.relaycore.xyz';
+
+            // Verify with the API
+            const verifyPath = '/api/user/me';
+            const response = await fetch(`${baseUrl}${verifyPath}`, {
+                method: 'GET',
+                headers: {
+                    'x-api-key': answers.apiKey,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                if (response.status === 401) {
+                    throw new Error('Invalid API Key. Please check your key and try again.');
+                }
+                throw new Error(`Authentication failed: Server returned ${response.status}`);
+            }
+
+            const userData = await response.json();
 
             const config: Config = {
                 apiKey: answers.apiKey,
@@ -68,11 +87,12 @@ authCommand
             await fs.writeJson(CONFIG_FILE, config, { spaces: 2 });
 
             spinner.succeed('Authentication successful');
-            console.log(chalk.green(`\n✅ Logged in to ${answers.environment}\n`));
+            console.log(chalk.green(`\n✅ Logged in as ${userData.userId} (${answers.environment})\n`));
 
-        } catch (error) {
+        } catch (error: any) {
             spinner.fail('Authentication failed');
-            console.error(chalk.red(error));
+            console.error(chalk.red('\nError: ' + (error.message || error)));
+            console.log(chalk.yellow('\nTip: Get your API Key from https://relaycore.xyz/dashboard/settings'));
             process.exit(1);
         }
     });
