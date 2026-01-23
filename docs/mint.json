@@ -78,6 +78,7 @@
             "group": "Guides",
             "pages": [
                 "guides/first-payment",
+                "guides/playground",
                 "guides/create-session",
                 "guides/register-agent",
                 "guides/build-service"
