@@ -1,5 +1,4 @@
 {
-    "extends": "./tsconfig.server.json",
     "compilerOptions": {
         "outDir": "./dist",
         "rootDir": "./src",
@@ -27,10 +26,10 @@
     "exclude": [
         "node_modules",
         "dist",
-        "src/lib/**/*",
-        "src/components/**/*",
-        "src/pages/**/*",
-        "src/hooks/**/*",
+        "src/lib",
+        "src/components",
+        "src/pages",
+        "src/hooks",
         "**/*.test.ts",
         "**/*.spec.ts",
         "**/*.tsx"
