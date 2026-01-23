@@ -1,5 +1,7 @@
 # Relay Core
 
+![Relay Core Preview](src/assets/RelayCore%20Preview.png)
+
 Production payment infrastructure for autonomous AI agents on Cronos EVM. Relay Core implements the x402 payment protocol with session-based escrow, enabling agents to discover services, execute paid operations, and settle real-world asset transactions through verifiable on-chain outcomes.
 
 The system combines HTTP 402 payment gates with EIP-3009 authorization, Cronos Facilitator settlement, and session escrow to eliminate gas fees while maintaining strict budget enforcement and complete audit trails.
